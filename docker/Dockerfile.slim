@@ -1,0 +1,25 @@
+# Slim image: core dependencies only, no RDKit, ADMET-AI, or Streamlit
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Create non-root user for security
+RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin appuser
+
+# Copy package metadata
+COPY pyproject.toml README.md LICENSE ./
+
+# Copy application source
+COPY src/ src/
+
+# Install core dependencies only (no optional extras)
+RUN pip install --no-cache-dir . \
+    && chown -R appuser:appuser /app
+
+# Create cache directory
+RUN mkdir -p /app/.chemfuse && chown appuser:appuser /app/.chemfuse
+
+USER appuser
+
+# Default command: show help
+CMD ["chemfuse", "--help"]

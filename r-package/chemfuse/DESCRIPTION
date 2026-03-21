@@ -1,0 +1,29 @@
+Package: chemfuse
+Title: Multi-Database Cheminformatics Suite
+Version: 0.1.0
+Authors@R: person("Junguk", "Hur", role = c("aut", "cre"),
+    email = "junguk.hur@med.und.edu",
+    comment = c(ORCID = "0000-0000-0000-0000"))
+Description: R interface to ChemFuse, integrating PubChem, ChEMBL, UniChem,
+    BindingDB, Open Targets, and SureChEMBL with local ADMET prediction and
+    analysis. Provides functions for compound search, batch screening,
+    cross-database identifier mapping, molecular descriptor calculation, and
+    ADMET property prediction via a reticulate bridge to the Python chemfuse
+    package.
+License: MIT + file LICENSE
+Imports:
+    reticulate (>= 1.34),
+    tibble,
+    jsonlite
+Suggests:
+    testthat (>= 3.0.0),
+    knitr,
+    rmarkdown,
+    readr
+SystemRequirements: Python (>= 3.11), chemfuse Python package
+    (https://pypi.org/project/chemfuse/)
+VignetteBuilder: knitr
+Encoding: UTF-8
+RoxygenNote: 7.3.0
+URL: https://github.com/hurlab/ChemFuse
+BugReports: https://github.com/hurlab/ChemFuse/issues

@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "ChemFuse"
+abstract: "An open-source multi-database cheminformatics suite integrating PubChem, ChEMBL, UniChem, BindingDB, Open Targets, and SureChEMBL with local ML-based ADMET prediction and analysis."
+authors:
+  - family-names: "Hur"
+    given-names: "Junguk"
+    orcid: "https://orcid.org/0000-0000-0000-0000"
+version: "0.1.0"
+date-released: 2026-03-20
+license: MIT
+repository-code: "https://github.com/hurlab/ChemFuse"
+repository-artifact: "https://pypi.org/project/chemfuse/"
+keywords:
+  - cheminformatics
+  - drug-discovery
+  - pubchem
+  - chembl
+  - admet
+  - drug-likeness
+  - molecular-descriptors
+  - chemical-databases

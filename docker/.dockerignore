@@ -1,0 +1,47 @@
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Version control
+.git/
+.gitignore
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Tests and development artifacts
+tests/
+*.coverage
+.coverage
+htmlcov/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# R package (not needed in Docker build context)
+r-package/
+
+# Development configuration
+.moai/
+.claude/
+.vscode/
+.idea/
+
+# Distribution artifacts
+dist/
+build/
+*.egg-info/
+
+# Editor artifacts
+*.swp
+*.swo
+.DS_Store

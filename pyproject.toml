@@ -1,0 +1,103 @@
+[project]
+name = "chemfuse"
+dynamic = ["version"]
+description = "Multi-database cheminformatics suite"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+authors = [
+    { name = "Junguk Hur" },
+]
+keywords = [
+    "cheminformatics", "pubchem", "chembl", "drug-discovery",
+    "admet", "drug-likeness", "molecular-descriptors",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Chemistry",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+    "httpx>=0.27",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "click>=8.0",
+    "rich>=13.0",
+    "pandas>=2.1",
+]
+
+[project.optional-dependencies]
+rdkit = ["rdkit>=2023.9"]
+admet = ["admet-ai>=2.0"]
+analyze = ["scikit-learn>=1.3", "umap-learn>=0.5"]
+viz = ["plotly>=5.18"]
+excel = ["openpyxl>=3.1"]
+web = ["streamlit>=1.30"]
+compute = ["chemfuse[rdkit]"]
+all = [
+    "chemfuse[rdkit]",
+    "chemfuse[admet]",
+    "chemfuse[analyze]",
+    "chemfuse[viz]",
+    "chemfuse[excel]",
+    "chemfuse[web]",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=5.0",
+    "respx>=0.21",
+    "ruff>=0.4",
+    "mypy>=1.8",
+]
+
+[project.scripts]
+chemfuse = "chemfuse.cli.main:cli"
+
+[project.urls]
+Homepage = "https://github.com/hurlab/ChemFuse"
+Documentation = "https://chemfuse.readthedocs.io"
+Repository = "https://github.com/hurlab/ChemFuse"
+Issues = "https://github.com/hurlab/ChemFuse/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/chemfuse/_version.py"
+pattern = '__version__ = "(?P<version>[^"]+)"'
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/chemfuse"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "--tb=short"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "UP", "B"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = false
+ignore_missing_imports = true
+
+[tool.coverage.run]
+source = ["chemfuse"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 85
+omit = ["*/tests/*", "*/__main__.py"]

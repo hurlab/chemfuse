@@ -1,0 +1,216 @@
+---
+title: "Introduction to chemfuse"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Introduction to chemfuse}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  eval = FALSE  # do not run by default (requires Python + chemfuse)
+)
+library(chemfuse)
+```
+
+## Overview
+
+The **chemfuse** R package provides an R interface to the Python [chemfuse](https://github.com/hurlab/ChemFuse) package, enabling R users to:
+
+- Search chemical compounds across PubChem, ChEMBL, UniChem, BindingDB, Open Targets, and SureChEMBL
+- Retrieve detailed compound data with optional enrichment (ADMET, drug-likeness, binding)
+- Perform batch screening of compound libraries
+- Map compound identifiers across databases (cross-referencing)
+- Compute molecular descriptors and predict ADMET properties locally
+- Export results to CSV or Excel
+
+## Installation
+
+### Python Prerequisites
+
+The R package requires the Python `chemfuse` package to be installed:
+
+```bash
+pip install chemfuse[all]
+```
+
+For ADMET predictions, include the `admet` extra:
+
+```bash
+pip install "chemfuse[admet]"
+```
+
+### R Package Installation
+
+```r
+# From R-universe (recommended)
+install.packages("chemfuse", repos = "https://hurlab.r-universe.dev")
+
+# Or from GitHub
+# install.packages("remotes")
+# remotes::install_github("hurlab/ChemFuse/r-package/chemfuse")
+```
+
+### Configure reticulate
+
+If you have multiple Python installations, tell reticulate which one has chemfuse:
+
+```r
+library(reticulate)
+use_python("/path/to/python")  # or use_virtualenv(), use_condaenv()
+```
+
+## Basic Usage
+
+### Searching Compounds
+
+```{r search}
+library(chemfuse)
+
+# Search by name
+results <- cf_search("aspirin")
+print(results)
+
+# Search with multiple databases
+results_multi <- cf_search("aspirin", sources = c("pubchem", "chembl"))
+
+# Search by SMILES
+results_smiles <- cf_search(
+  "CC(=O)Oc1ccccc1C(=O)O",
+  query_type = "smiles"
+)
+```
+
+The `cf_search()` function returns a **tibble** with columns including `cid`, `name`, `smiles`, `inchikey`, `formula`, and `molecular_weight`.
+
+### Retrieving a Single Compound
+
+```{r get}
+# Basic retrieval
+compound <- cf_get("aspirin")
+compound$compound  # tibble with compound data
+
+# With ADMET predictions
+enriched <- cf_get("aspirin", admet = TRUE)
+enriched$admet  # tibble with ADMET predictions
+
+# Full enrichment
+full <- cf_get("aspirin", admet = TRUE, druglikeness = TRUE)
+full$druglikeness  # list of drug-likeness filter results
+```
+
+### Batch Screening
+
+```{r screen}
+# Screen a data frame
+library <- data.frame(
+  smiles = c(
+    "CC(=O)Oc1ccccc1C(=O)O",  # aspirin
+    "Cn1cnc2c1c(=O)n(c(=O)n2C)C",  # caffeine
+    "c1ccc2c(c1)cc1ccc3cccc4ccc2c1c34"  # pyrene
+  ),
+  name = c("aspirin", "caffeine", "pyrene")
+)
+
+results <- cf_screen(library, sources = c("pubchem"))
+print(results)
+
+# Screen from a CSV file
+results_csv <- cf_screen("my_compounds.csv")
+```
+
+### Cross-Database Identifier Mapping
+
+```{r xref}
+# Map by PubChem CID (aspirin = 2244)
+xref <- cf_xref(cid = 2244)
+print(xref)
+
+# Map by ChEMBL ID
+xref_chembl <- cf_xref(chembl_id = "CHEMBL25")
+
+# Map by SMILES
+xref_smiles <- cf_xref(smiles = "CC(=O)Oc1ccccc1C(=O)O")
+```
+
+The result is a tibble with `database` and `identifier` columns showing all available cross-references.
+
+### Computing Molecular Descriptors
+
+```{r descriptors}
+# Compute RDKit descriptors for a compound
+desc <- cf_descriptors("CC(=O)Oc1ccccc1C(=O)O")
+print(names(desc))  # shows available descriptor columns
+
+# Multiple compounds
+descs <- cf_descriptors(c("CCO", "CCC", "CC(=O)O"))
+```
+
+### Predicting ADMET Properties
+
+```{r admet}
+# Predict ADMET properties
+admet <- cf_admet("CC(=O)Oc1ccccc1C(=O)O")
+print(admet)
+
+# Check drug-likeness
+dl <- cf_druglikeness("CC(=O)Oc1ccccc1C(=O)O")
+cat("Passes Lipinski Ro5:", dl$lipinski$passes, "\n")
+```
+
+## Exporting Results
+
+```{r export}
+# Search for compounds
+results <- cf_search("aspirin")
+
+# Export to CSV
+cf_to_csv(results, "aspirin_results.csv")
+
+# Export to Excel (requires openxlsx package)
+cf_to_excel(results, "aspirin_results.xlsx", sheet = "aspirin")
+```
+
+## A Complete Workflow
+
+Here is a complete drug screening workflow:
+
+```{r workflow}
+library(chemfuse)
+library(dplyr)
+
+# Step 1: Define your compound library
+compounds <- data.frame(
+  smiles = c(
+    "CC(=O)Oc1ccccc1C(=O)O",
+    "Cn1cnc2c1c(=O)n(c(=O)n2C)C",
+    "OC[C@H]1OC(O)[C@H](O)[C@@H](O)[C@@H]1O"
+  ),
+  name = c("aspirin", "caffeine", "glucose")
+)
+
+# Step 2: Batch screen across PubChem
+results <- cf_screen(compounds, sources = c("pubchem"))
+
+# Step 3: Add ADMET predictions for drug candidates
+admet_results <- cf_admet(compounds$smiles)
+
+# Step 4: Compute molecular descriptors
+descriptors <- cf_descriptors(compounds$smiles)
+
+# Step 5: Cross-reference with other databases
+aspirin_xref <- cf_xref(smiles = "CC(=O)Oc1ccccc1C(=O)O")
+
+# Step 6: Export final results
+cf_to_csv(results, "screening_results.csv")
+```
+
+## Getting Help
+
+- Package documentation: `?cf_search`, `?cf_get`, etc.
+- GitHub repository: <https://github.com/hurlab/ChemFuse>
+- Python package docs: <https://chemfuse.readthedocs.io>
+- Report issues: <https://github.com/hurlab/ChemFuse/issues>
