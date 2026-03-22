@@ -156,31 +156,25 @@ secret-*.*
 .aws/credentials
 
 # ===========================================
-# Claude Code Configuration
+# Claude Code / MoAI Infrastructure
 # ===========================================
-.claude/settings.local.json
-.claude/settings.local.*.json
-.claude/.env.local*
-.claude/local/
-.claude/plans/
-.claude/agent-memory/
-.claude/worktrees/
-
-# Skill-specific credentials
-.claude/skills/*/.env*
-.claude/skills/*/secrets/
-.claude/skills/*/*/*secret*
-.claude/skills/*/*/*key*
-.claude/skills/*/*/*token*
-# Re-include legitimate skill module files containing "token" in their name
-!.claude/skills/*/modules/*token*.md
+.claude/
+.moai/
+CLAUDE.md
+.mcp.json
 
 # ===========================================
-# Local-Only Files (never sync via git pull)
+# Internal Project Management
 # ===========================================
-.moai/status_line.sh
-.moai/memory/
-.moai/worktrees/
+PROJECT_HANDOFF.md
+PROJECT_LOG.md
+DESIGN-*.md
+PLAN-*.md
+
+# ===========================================
+# GitHub Workflows (CI/CD managed separately)
+# ===========================================
+.github/
 
 # ===========================================
 # Node.js (for docs/Nextra)
