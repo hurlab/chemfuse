@@ -78,7 +78,12 @@ def read_sdf(path: str) -> list[Compound]:
     if not p.exists():
         raise FileNotFoundError(f"SDF file not found: {path}")
 
-    supplier = Chem.SDMolSupplier(str(p))
+    # SDMolSupplier raises OSError on empty/invalid files
+    try:
+        supplier = Chem.SDMolSupplier(str(p))
+    except OSError:
+        return []
+
     compounds: list[Compound] = []
     skipped = 0
 
