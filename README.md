@@ -2,11 +2,8 @@
 
 **Multi-database cheminformatics suite for Python and R**
 
-[![CI](https://github.com/hurlab/ChemFuse/actions/workflows/ci.yml/badge.svg)](https://github.com/hurlab/ChemFuse/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/hurlab/ChemFuse/branch/main/graph/badge.svg)](https://codecov.io/gh/hurlab/ChemFuse)
-[![PyPI version](https://badge.fury.io/py/chemfuse.svg)](https://pypi.org/project/chemfuse/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Python Versions](https://img.shields.io/pypi/pyversions/chemfuse)](https://pypi.org/project/chemfuse/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 
 ChemFuse unifies compound search, ADMET prediction, and cross-database identifier mapping into a single coherent API. Query PubChem, ChEMBL, UniChem, BindingDB, Open Targets, and SureChEMBL simultaneously, compute RDKit descriptors, and predict ADMET properties — all with one package.
 

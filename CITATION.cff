@@ -6,7 +6,7 @@ abstract: "An open-source multi-database cheminformatics suite integrating PubCh
 authors:
   - family-names: "Hur"
     given-names: "Junguk"
-    orcid: "https://orcid.org/0000-0000-0000-0000"
+    orcid: "https://orcid.org/0000-0002-0736-2149"
 version: "0.1.0"
 date-released: 2026-03-20
 license: MIT

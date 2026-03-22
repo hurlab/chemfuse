@@ -3,7 +3,7 @@
 **Junguk Hur**[1]*
 
 [1] Computational Chemistry Laboratory, Independent Researcher
-*Corresponding author: junguk.hur@chemfuse.io | ORCID: [pending assignment]
+*Corresponding author | ORCID: 0000-0002-0736-2149
 
 ---
 
