@@ -539,6 +539,55 @@ class CompoundCollection(BaseModel):
             timestamp=self.timestamp,
         )
 
+    def decompose_rgroups(self, core_smarts: str) -> pd.DataFrame:
+        """Decompose compounds into R-groups against a core scaffold.
+
+        Compounds that do not match the core scaffold (SMARTS) are silently
+        excluded. Requires RDKit to be installed.
+
+        Args:
+            core_smarts: SMARTS string defining the core scaffold.
+
+        Returns:
+            DataFrame with columns: ``smiles``, ``Core``, ``R1``, ``R2``, ...
+            Empty DataFrame if no compounds match the core.
+
+        Raises:
+            ValueError: If ``core_smarts`` is not a valid SMARTS pattern.
+            OptionalDependencyError: If RDKit is not installed.
+        """
+        from chemfuse.analyze.rgroup import decompose_rgroups as _decompose
+
+        smiles_list = [c.smiles for c in self.compounds]
+        return _decompose(smiles_list, core_smarts)
+
+    def sar_table(
+        self,
+        core_smarts: str,
+        activity_type: str = "IC50",
+    ) -> pd.DataFrame:
+        """Generate a SAR table with R-groups and activity values.
+
+        Decomposes compounds into R-groups against ``core_smarts``, then joins
+        with bioactivity data filtered by ``activity_type``. Compounds without
+        matching activity are included with NaN activity values.
+
+        Args:
+            core_smarts: SMARTS string defining the core scaffold.
+            activity_type: Activity type to extract (e.g., ``"IC50"``, ``"Ki"``).
+
+        Returns:
+            DataFrame with columns: ``smiles``, ``Core``, ``R1``, ``R2``, ...,
+            ``activity_value``, ``activity_units``, ``pic50``.
+
+        Raises:
+            ValueError: If ``core_smarts`` is not a valid SMARTS pattern.
+            OptionalDependencyError: If RDKit is not installed.
+        """
+        from chemfuse.analyze.rgroup import rgroup_sar_table as _sar_table
+
+        return _sar_table(self.compounds, core_smarts, activity_type=activity_type)
+
     def detect_activity_cliffs(
         self,
         activity_col: str = "ic50",
@@ -693,3 +742,100 @@ class CompoundCollection(BaseModel):
 
         smiles_list = [c.smiles for c in self.compounds if c.smiles]
         return _diversity_score(smiles_list, fp_type=fp_type)
+
+    # ------------------------------------------------------------------
+    # SAR Landscape methods (CF-E10)
+    # ------------------------------------------------------------------
+
+    def plot_sar_landscape(
+        self,
+        activity_col: str = "pic50",
+        method: str = "umap",
+        fp_type: str = "morgan",
+        show_cliffs: bool = True,
+        cliff_threshold: float = 0.8,
+    ) -> dict[str, Any]:
+        """Generate SAR landscape from compound bioactivity data.
+
+        Extracts SMILES and activity values from the collection, then delegates
+        to :func:`chemfuse.analyze.landscape.sar_landscape` to compute 2D
+        coordinates, detect activity cliffs, and build an interactive figure.
+
+        Activity values are sourced in the following priority order:
+
+        1. ``pic50`` attribute on a :class:`~chemfuse.models.bioactivity.Bioactivity`
+           record attached to the compound (when *activity_col* is ``"pic50"``).
+        2. The first ``value_nm`` from a bioactivity record when pic50 is
+           unavailable.
+        3. A matching key in the compound's ``extra`` dict.
+
+        Compounds without a resolvable activity value are silently skipped.
+
+        Args:
+            activity_col: Bioactivity attribute or extra-dict key to use.
+                Defaults to ``"pic50"``.
+            method: Dimensionality reduction method: "umap", "tsne", or "pca".
+            fp_type: Fingerprint type for similarity and DR ("morgan", "maccs",
+                "rdkit").
+            show_cliffs: When *True*, cliff pairs are detected and included in
+                the returned dict and drawn on the figure.
+            cliff_threshold: Minimum Tanimoto similarity for cliff detection.
+
+        Returns:
+            dict as returned by :func:`~chemfuse.analyze.landscape.sar_landscape`.
+
+        Raises:
+            ValueError: If no compounds with valid activities are found.
+        """
+        from chemfuse.analyze.landscape import sar_landscape as _sar_landscape
+
+        smiles_valid: list[str] = []
+        activities_valid: list[float] = []
+
+        for compound in self.compounds:
+            if not compound.smiles:
+                continue
+
+            activity_value: float | None = None
+
+            # Try bioactivities list
+            if hasattr(compound, "bioactivities") and compound.bioactivities:
+                for bio in compound.bioactivities:
+                    if activity_col == "pic50" and hasattr(bio, "pic50") and bio.pic50 is not None:
+                        activity_value = float(bio.pic50)
+                        break
+                    if activity_col == "value_nm" and hasattr(bio, "value_nm") and bio.value_nm is not None:
+                        activity_value = float(bio.value_nm)
+                        break
+                    # Fallback: use first available value_nm as surrogate
+                    if activity_value is None and hasattr(bio, "value_nm") and bio.value_nm is not None:
+                        activity_value = float(bio.value_nm)
+
+            # Fallback: try compound.extra dict
+            if activity_value is None:
+                raw = compound.to_dict()
+                if activity_col in raw and raw[activity_col] is not None:
+                    try:
+                        activity_value = float(raw[activity_col])
+                    except (TypeError, ValueError):
+                        pass
+
+            if activity_value is not None:
+                smiles_valid.append(compound.smiles)
+                activities_valid.append(activity_value)
+
+        if not smiles_valid:
+            raise ValueError(
+                f"No compounds with valid '{activity_col}' activity values found in the collection. "
+                "Ensure compounds have bioactivity data (SPEC-CF-002/CF-003)."
+            )
+
+        cliff_thresh = cliff_threshold if show_cliffs else 1.1  # > 1.0 means no cliffs detected
+
+        return _sar_landscape(
+            smiles_list=smiles_valid,
+            activities=activities_valid,
+            method=method,
+            fp_type=fp_type,
+            cliff_threshold=cliff_thresh,
+        )

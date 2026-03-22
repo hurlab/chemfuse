@@ -96,45 +96,34 @@ def export_excel(
 def export_sdf(
     collection: CompoundCollection,
     output_path: str | Path,
+    include_properties: bool = True,
 ) -> Path:
-    """Export a CompoundCollection to SDF format.
+    """Export a CompoundCollection to an enriched SDF file.
+
+    Delegates to :func:`chemfuse.core.sdf.write_sdf` so that all compound
+    identifiers, physicochemical properties, computed descriptors, and source
+    information are written as SD tags.
 
     Requires rdkit to be installed.
 
     Args:
         collection: CompoundCollection to export.
         output_path: Path for the output SDF file.
+        include_properties: Whether to include all computed properties as SD
+            tags.  Defaults to True (enriched output).
 
     Returns:
         Path to the created SDF file.
 
     Raises:
-        ImportError: If rdkit is not installed.
+        OptionalDependencyError: If rdkit is not installed.
     """
-    try:
-        from rdkit import Chem  # noqa: F401
-    except ImportError as exc:
-        raise ImportError(
-            "SDF export requires rdkit. Install it with: pip install chemfuse[rdkit]"
-        ) from exc
-
-    from rdkit import Chem
-    from rdkit.Chem import SDWriter
+    from chemfuse.core.sdf import write_sdf
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with SDWriter(str(output_path)) as writer:
-        for compound in collection:
-            if compound.smiles:
-                mol = Chem.MolFromSmiles(compound.smiles)
-                if mol is not None:
-                    if compound.name:
-                        mol.SetProp("_Name", compound.name)
-                    if compound.cid:
-                        mol.SetProp("CID", str(compound.cid))
-                    writer.write(mol)
-
+    write_sdf(list(collection), str(output_path), include_properties=include_properties)
     return output_path
 
 

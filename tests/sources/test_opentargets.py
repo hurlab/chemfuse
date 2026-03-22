@@ -383,6 +383,131 @@ class TestOpenTargetsGetTargetInfo:
         assert info == {}
 
 
+class TestOpenTargetsDrugMetadata:
+    """Tests for CF-E08: extended GraphQL query with drug-level clinical metadata."""
+
+    # Extended response includes withdrawn, blackBoxWarning, and clinical phase
+    ASPIRIN_EXTENDED_RESPONSE = {
+        "data": {
+            "drug": {
+                "id": "CHEMBL25",
+                "name": "ASPIRIN",
+                "hasBeenWithdrawn": False,
+                "blackBoxWarning": False,
+                "yearOfFirstApproval": 1897,
+                "maximumClinicalTrialPhase": 4,
+                "linkedDiseases": {
+                    "count": 1,
+                    "rows": [
+                        {
+                            "disease": {"id": "EFO_0003785", "name": "pain"},
+                            "score": 0.85,
+                            "evidenceCount": 42,
+                        }
+                    ],
+                },
+                "linkedTargets": {
+                    "count": 0,
+                    "rows": [],
+                },
+            }
+        }
+    }
+
+    WITHDRAWN_DRUG_RESPONSE = {
+        "data": {
+            "drug": {
+                "id": "CHEMBL_WITHDRAWN",
+                "name": "WITHDRAWN_DRUG",
+                "hasBeenWithdrawn": True,
+                "blackBoxWarning": True,
+                "yearOfFirstApproval": 1990,
+                "maximumClinicalTrialPhase": 4,
+                "linkedDiseases": {"count": 0, "rows": []},
+                "linkedTargets": {"count": 0, "rows": []},
+            }
+        }
+    }
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_get_drug_metadata_returns_withdrawn_flag(self) -> None:
+        """get_drug_metadata returns hasBeenWithdrawn flag from extended query."""
+        respx.post(OPENTARGETS_URL).mock(
+            return_value=Response(200, json=self.WITHDRAWN_DRUG_RESPONSE)
+        )
+        adapter = OpenTargetsAdapter()
+        meta = await adapter.get_drug_metadata("CHEMBL_WITHDRAWN")
+        assert meta["has_been_withdrawn"] is True
+        assert meta["black_box_warning"] is True
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_get_drug_metadata_approved_drug(self) -> None:
+        """get_drug_metadata returns correct metadata for an approved drug."""
+        respx.post(OPENTARGETS_URL).mock(
+            return_value=Response(200, json=self.ASPIRIN_EXTENDED_RESPONSE)
+        )
+        adapter = OpenTargetsAdapter()
+        meta = await adapter.get_drug_metadata("CHEMBL25")
+        assert meta["has_been_withdrawn"] is False
+        assert meta["black_box_warning"] is False
+        assert meta["year_of_first_approval"] == 1897
+        assert meta["maximum_clinical_trial_phase"] == 4
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_get_drug_metadata_returns_empty_for_unknown_drug(self) -> None:
+        """get_drug_metadata returns empty dict when drug is not found."""
+        respx.post(OPENTARGETS_URL).mock(
+            return_value=Response(200, json=OPENTARGETS_EMPTY_RESPONSE)
+        )
+        adapter = OpenTargetsAdapter()
+        meta = await adapter.get_drug_metadata("CHEMBL_UNKNOWN")
+        assert meta == {}
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_search_by_chembl_id_still_returns_associations(self) -> None:
+        """search_by_chembl_id still returns TargetAssociation list (backward compat)."""
+        respx.post(OPENTARGETS_URL).mock(
+            return_value=Response(200, json=self.ASPIRIN_EXTENDED_RESPONSE)
+        )
+        adapter = OpenTargetsAdapter()
+        associations = await adapter.search_by_chembl_id("CHEMBL25")
+        assert len(associations) == 1
+        assert associations[0].disease_name == "pain"
+
+    def test_parse_with_meta_extracts_drug_metadata(self) -> None:
+        """_parse_drug_disease_response_with_meta returns metadata dict."""
+        adapter = OpenTargetsAdapter()
+        associations, meta = adapter._parse_drug_disease_response_with_meta(
+            self.ASPIRIN_EXTENDED_RESPONSE, "CHEMBL25"
+        )
+        assert len(associations) == 1
+        assert meta["has_been_withdrawn"] is False
+        assert meta["black_box_warning"] is False
+        assert meta["year_of_first_approval"] == 1897
+        assert meta["maximum_clinical_trial_phase"] == 4
+
+    def test_parse_with_meta_withdrawn_drug(self) -> None:
+        """_parse_drug_disease_response_with_meta reflects withdrawn=True correctly."""
+        adapter = OpenTargetsAdapter()
+        _associations, meta = adapter._parse_drug_disease_response_with_meta(
+            self.WITHDRAWN_DRUG_RESPONSE, "CHEMBL_WITHDRAWN"
+        )
+        assert meta["has_been_withdrawn"] is True
+        assert meta["black_box_warning"] is True
+
+    def test_parse_with_meta_no_drug_returns_empty(self) -> None:
+        """_parse_drug_disease_response_with_meta returns empty meta when drug is None."""
+        adapter = OpenTargetsAdapter()
+        _associations, meta = adapter._parse_drug_disease_response_with_meta(
+            OPENTARGETS_EMPTY_RESPONSE, "CHEMBL_NONE"
+        )
+        assert meta == {}
+
+
 class TestOpenTargetsAdapterMisc:
     """Miscellaneous OpenTargets adapter tests."""
 

@@ -257,6 +257,62 @@ class TestBioactivityNormalization:
         assert "is_normalized" in d
 
 
+class TestBioactivityCFE08Fields:
+    """Tests for CF-E08: confidence_score, assay_description, data_validity_comment."""
+
+    def test_confidence_score_stored(self) -> None:
+        """confidence_score field is stored correctly."""
+        ba = Bioactivity(
+            target_name="Target",
+            activity_type="IC50",
+            value=100.0,
+            units="nM",
+            confidence_score=9,
+        )
+        assert ba.confidence_score == 9
+
+    def test_assay_description_stored(self) -> None:
+        """assay_description field is stored correctly."""
+        ba = Bioactivity(
+            target_name="Target",
+            activity_type="Ki",
+            assay_description="Fluorescence-based binding assay",
+        )
+        assert ba.assay_description == "Fluorescence-based binding assay"
+
+    def test_data_validity_comment_stored(self) -> None:
+        """data_validity_comment field is stored correctly."""
+        ba = Bioactivity(
+            target_name="Target",
+            activity_type="IC50",
+            data_validity_comment="Potentially erroneous",
+        )
+        assert ba.data_validity_comment == "Potentially erroneous"
+
+    def test_cf_e08_fields_default_none(self) -> None:
+        """CF-E08 fields default to None when not provided."""
+        ba = Bioactivity(target_name="Target", activity_type="IC50")
+        assert ba.confidence_score is None
+        assert ba.assay_description is None
+        assert ba.data_validity_comment is None
+
+    def test_cf_e08_fields_in_model_dump(self) -> None:
+        """CF-E08 fields appear in model_dump output."""
+        ba = Bioactivity(
+            target_name="Target",
+            activity_type="IC50",
+            confidence_score=7,
+            assay_description="Direct assay",
+            data_validity_comment=None,
+        )
+        d = ba.model_dump()
+        assert "confidence_score" in d
+        assert "assay_description" in d
+        assert "data_validity_comment" in d
+        assert d["confidence_score"] == 7
+        assert d["assay_description"] == "Direct assay"
+
+
 class TestBestActivity:
     """Tests for Compound.best_activity() method."""
 

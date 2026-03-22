@@ -357,6 +357,130 @@ class TestChEMBLMechanism:
         assert mechs == []
 
 
+class TestChEMBLDataEnrichment:
+    """Tests for CF-E08: max_phase, molecule_type, and bioactivity quality fields."""
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_parse_molecule_max_phase(self) -> None:
+        """_parse_molecule populates max_phase from molecule dict."""
+        mol_with_phase = {
+            **ASPIRIN_MOLECULE,
+            "max_phase": 4,
+            "molecule_type": "Small molecule",
+        }
+        respx.get(f"{CHEMBL_BASE}/molecule/CHEMBL25").mock(
+            return_value=Response(200, json=mol_with_phase)
+        )
+        adapter = ChEMBLAdapter()
+        compound = await adapter.get_by_id("CHEMBL25")
+        assert compound is not None
+        assert compound.max_phase == 4
+        assert compound.molecule_type == "Small molecule"
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_parse_molecule_max_phase_zero(self) -> None:
+        """max_phase=0 (preclinical) is correctly stored, not treated as falsy."""
+        mol_preclinical = {**ASPIRIN_MOLECULE, "max_phase": 0}
+        respx.get(f"{CHEMBL_BASE}/molecule/CHEMBL25").mock(
+            return_value=Response(200, json=mol_preclinical)
+        )
+        adapter = ChEMBLAdapter()
+        compound = await adapter.get_by_id("CHEMBL25")
+        assert compound is not None
+        assert compound.max_phase == 0
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_parse_molecule_max_phase_none_when_absent(self) -> None:
+        """max_phase is None when not present in API response."""
+        respx.get(f"{CHEMBL_BASE}/molecule/CHEMBL25").mock(
+            return_value=Response(200, json=ASPIRIN_MOLECULE)
+        )
+        adapter = ChEMBLAdapter()
+        compound = await adapter.get_by_id("CHEMBL25")
+        assert compound is not None
+        assert compound.max_phase is None
+        assert compound.molecule_type is None
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_parse_activity_confidence_score(self) -> None:
+        """_parse_activity stores confidence_score on Bioactivity."""
+        page_data = {
+            "activities": [
+                {
+                    "target_pref_name": "Cyclooxygenase-1",
+                    "standard_type": "IC50",
+                    "standard_value": "1000",
+                    "standard_units": "nM",
+                    "confidence_score": 9,
+                    "assay_description": "Inhibition of COX-1 in vitro",
+                    "data_validity_comment": None,
+                }
+            ],
+            "page_meta": {"next": None},
+        }
+        respx.get(f"{CHEMBL_BASE}/activity").mock(
+            return_value=Response(200, json=page_data)
+        )
+        adapter = ChEMBLAdapter()
+        activities = await adapter.get_bioactivities("CHEMBL25")
+        assert len(activities) == 1
+        act = activities[0]
+        assert act.confidence_score == 9
+        assert act.assay_description == "Inhibition of COX-1 in vitro"
+        assert act.data_validity_comment is None
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_parse_activity_data_validity_comment(self) -> None:
+        """_parse_activity stores data_validity_comment when present."""
+        page_data = {
+            "activities": [
+                {
+                    "target_pref_name": "Target B",
+                    "standard_type": "Ki",
+                    "standard_value": "50",
+                    "standard_units": "nM",
+                    "confidence_score": 4,
+                    "data_validity_comment": "Outside typical range",
+                }
+            ],
+            "page_meta": {"next": None},
+        }
+        respx.get(f"{CHEMBL_BASE}/activity").mock(
+            return_value=Response(200, json=page_data)
+        )
+        adapter = ChEMBLAdapter()
+        activities = await adapter.get_bioactivities("CHEMBL25")
+        assert activities[0].data_validity_comment == "Outside typical range"
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_parse_activity_confidence_score_none_when_absent(self) -> None:
+        """confidence_score is None when not present in activity response."""
+        page_data = {
+            "activities": [
+                {
+                    "target_pref_name": "Target",
+                    "standard_type": "IC50",
+                    "standard_value": "200",
+                    "standard_units": "nM",
+                }
+            ],
+            "page_meta": {"next": None},
+        }
+        respx.get(f"{CHEMBL_BASE}/activity").mock(
+            return_value=Response(200, json=page_data)
+        )
+        adapter = ChEMBLAdapter()
+        activities = await adapter.get_bioactivities("CHEMBL25")
+        assert activities[0].confidence_score is None
+        assert activities[0].assay_description is None
+
+
 class TestChEMBLAdapterMisc:
     """Miscellaneous adapter tests."""
 

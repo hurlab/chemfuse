@@ -178,6 +178,97 @@ class TestUniChemBatchMap:
         assert results == {}
 
 
+class TestUniChemEnrichCompoundXrefs:
+    """Tests for CF-E08: UniChem enrich_compound_xrefs stores cross-reference IDs."""
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_enrich_stores_drugbank_id_from_inchikey(self) -> None:
+        """enrich_compound_xrefs stores drugbank_id when source 2 is present."""
+        from chemfuse.models.compound import Compound
+
+        respx.get(f"{UNICHEM_BASE}/inchikey/{ASPIRIN_INCHIKEY}").mock(
+            return_value=Response(200, json=ASPIRIN_UNICHEM_RESPONSE)
+        )
+        adapter = UniChemAdapter()
+        compound = Compound(smiles="CC(=O)Oc1ccccc1C(O)=O", inchikey=ASPIRIN_INCHIKEY)
+        await adapter.enrich_compound_xrefs(compound)
+        assert compound.drugbank_id == "DB00945"
+        assert compound.kegg_id == "D00109"
+        assert compound.chebi_id == "CHEBI:15365"
+        assert compound.chembl_id == "CHEMBL25"
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_enrich_stores_xrefs_from_pubchem_cid(self) -> None:
+        """enrich_compound_xrefs uses CID-based lookup when no InChIKey is available."""
+        from chemfuse.models.compound import Compound
+
+        respx.get(f"{UNICHEM_BASE}/src_compound_id/2244/src_id/22").mock(
+            return_value=Response(200, json=PUBCHEM_MAP_RESPONSE)
+        )
+        adapter = UniChemAdapter()
+        compound = Compound(smiles="CC(=O)Oc1ccccc1C(O)=O", cid=2244)
+        await adapter.enrich_compound_xrefs(compound)
+        assert compound.drugbank_id == "DB00945"
+        assert compound.chembl_id == "CHEMBL25"
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_enrich_does_not_overwrite_existing_xrefs(self) -> None:
+        """enrich_compound_xrefs does not overwrite pre-existing cross-reference IDs."""
+        from chemfuse.models.compound import Compound
+
+        respx.get(f"{UNICHEM_BASE}/inchikey/{ASPIRIN_INCHIKEY}").mock(
+            return_value=Response(200, json=ASPIRIN_UNICHEM_RESPONSE)
+        )
+        adapter = UniChemAdapter()
+        compound = Compound(
+            smiles="CC(=O)Oc1ccccc1C(O)=O",
+            inchikey=ASPIRIN_INCHIKEY,
+            drugbank_id="DB_EXISTING",
+        )
+        await adapter.enrich_compound_xrefs(compound)
+        # Existing drugbank_id should not be overwritten
+        assert compound.drugbank_id == "DB_EXISTING"
+        # Others are still populated
+        assert compound.kegg_id == "D00109"
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_enrich_empty_when_no_identifiers(self) -> None:
+        """enrich_compound_xrefs does nothing when compound has no InChIKey or CID."""
+        from chemfuse.models.compound import Compound
+
+        adapter = UniChemAdapter()
+        compound = Compound(smiles="CCO")  # no inchikey, no cid
+        await adapter.enrich_compound_xrefs(compound)
+        assert compound.drugbank_id is None
+        assert compound.kegg_id is None
+        assert compound.chebi_id is None
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_enrich_handles_partial_response(self) -> None:
+        """enrich_compound_xrefs handles response without all databases."""
+        from chemfuse.models.compound import Compound
+
+        partial_response = [
+            {"src_id": "1", "src_compound_id": "CHEMBL25"},
+            {"src_id": "2", "src_compound_id": "DB00945"},
+            # kegg and chebi absent
+        ]
+        respx.get(f"{UNICHEM_BASE}/inchikey/{ASPIRIN_INCHIKEY}").mock(
+            return_value=Response(200, json=partial_response)
+        )
+        adapter = UniChemAdapter()
+        compound = Compound(smiles="CC(=O)Oc1ccccc1C(O)=O", inchikey=ASPIRIN_INCHIKEY)
+        await adapter.enrich_compound_xrefs(compound)
+        assert compound.drugbank_id == "DB00945"
+        assert compound.kegg_id is None
+        assert compound.chebi_id is None
+
+
 class TestUniChemAdapterMisc:
     """Miscellaneous UniChem adapter tests."""
 

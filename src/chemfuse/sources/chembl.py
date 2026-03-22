@@ -281,6 +281,17 @@ class ChEMBLAdapter(SourceAdapter):
 
         name = mol.get("pref_name") or None
 
+        # CF-E08: parse clinical/regulatory metadata from ChEMBL molecule data
+        max_phase_raw = mol.get("max_phase")
+        max_phase: int | None = None
+        if max_phase_raw is not None:
+            try:
+                max_phase = int(max_phase_raw)
+            except (TypeError, ValueError):
+                pass
+
+        molecule_type: str | None = mol.get("molecule_type") or None
+
         return Compound(
             chembl_id=chembl_id,
             smiles=smiles,
@@ -289,6 +300,8 @@ class ChEMBLAdapter(SourceAdapter):
             formula=props_raw.get("molecular_formula") or mol.get("molecular_formula"),
             sources=["chembl"],
             properties=properties,
+            max_phase=max_phase,
+            molecule_type=molecule_type,
         )
 
     def _parse_activity(self, act: dict, molecule_chembl_id: str) -> Bioactivity | None:
@@ -312,6 +325,17 @@ class ChEMBLAdapter(SourceAdapter):
         value_raw = act.get("standard_value") or act.get("value")
         value = _safe_float(value_raw)
 
+        # CF-E08: parse assay quality metadata
+        confidence_score_raw = act.get("confidence_score")
+        confidence_score: int | None = None
+        if confidence_score_raw is not None:
+            try:
+                confidence_score = int(confidence_score_raw)
+            except (TypeError, ValueError):
+                pass
+        assay_description: str | None = act.get("assay_description") or None
+        data_validity_comment: str | None = act.get("data_validity_comment") or None
+
         return Bioactivity(
             target_name=target_name,
             target_id=target_id,
@@ -322,6 +346,9 @@ class ChEMBLAdapter(SourceAdapter):
             assay_type=assay_type,
             source="chembl",
             reference=reference,
+            confidence_score=confidence_score,
+            assay_description=assay_description,
+            data_validity_comment=data_validity_comment,
         )
 
     @staticmethod

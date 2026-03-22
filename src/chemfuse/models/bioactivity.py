@@ -63,6 +63,11 @@ class Bioactivity(BaseModel):
     relation: str | None = None  # =, <, >, <=, >=
     assay_type: str | None = None  # Binding, Functional, ADME
 
+    # ChEMBL assay quality metadata (CF-E08)
+    confidence_score: int | None = None        # 0-9 from ChEMBL (9=direct binding assay)
+    assay_description: str | None = None       # free-text description of the assay
+    data_validity_comment: str | None = None   # flags suspicious values from ChEMBL
+
     # Source metadata
     source: str = ""  # e.g., "chembl"
     reference: str | None = None  # PubMed ID or URL

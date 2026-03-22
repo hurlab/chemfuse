@@ -63,6 +63,17 @@ class Compound(BaseModel):
     target_associations: list[Any] = Field(default_factory=list)  # list[TargetAssociation]
     patents: list[Any] = Field(default_factory=list)              # list[Patent]
 
+    # Clinical/regulatory metadata (CF-E08: from ChEMBL and Open Targets)
+    max_phase: int | None = None              # 0-4 from ChEMBL (0=preclinical, 4=approved)
+    molecule_type: str | None = None          # e.g., "Small molecule", "Antibody"
+    is_withdrawn: bool | None = None          # from Open Targets hasBeenWithdrawn
+    black_box_warning: bool | None = None     # from Open Targets blackBoxWarning
+
+    # Cross-reference IDs (CF-E08: from UniChem, stored instead of discarded)
+    drugbank_id: str | None = None
+    kegg_id: str | None = None
+    chebi_id: str | None = None
+
     # Scaffold fields (populated by analyze.scaffolds functions or on demand)
     scaffold: str | None = None
     generic_scaffold: str | None = None
@@ -341,12 +352,26 @@ class Compound(BaseModel):
 
             if self.inchikey and cross_reference is not None:
                 mappings = await cross_reference(self.inchikey)
+                # CF-E08: store cross-reference IDs instead of discarding them
+                if not self.drugbank_id and mappings.get("drugbank"):
+                    self.drugbank_id = mappings["drugbank"]
+                if not self.kegg_id and mappings.get("kegg"):
+                    self.kegg_id = mappings["kegg"]
+                if not self.chebi_id and mappings.get("chebi"):
+                    self.chebi_id = mappings["chebi"]
                 chembl_id = mappings.get("chembl")
                 if chembl_id:
                     return str(chembl_id)
 
             if self.cid and map_identifiers is not None:
                 mappings = await map_identifiers(str(self.cid), "pubchem")
+                # CF-E08: store cross-reference IDs from CID-based lookup too
+                if not self.drugbank_id and mappings.get("drugbank"):
+                    self.drugbank_id = mappings["drugbank"]
+                if not self.kegg_id and mappings.get("kegg"):
+                    self.kegg_id = mappings["kegg"]
+                if not self.chebi_id and mappings.get("chebi"):
+                    self.chebi_id = mappings["chebi"]
                 chembl_id = mappings.get("chembl")
                 if chembl_id:
                     return str(chembl_id)

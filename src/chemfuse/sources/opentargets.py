@@ -17,11 +17,16 @@ OPENTARGETS_RATE_LIMIT = 3.0  # conservative; no hard limit documented
 logger = logging.getLogger(__name__)
 
 # GraphQL query to retrieve disease associations for a drug by ChEMBL ID
+# CF-E08: extended to include clinical/regulatory drug-level fields
 _DRUG_DISEASE_QUERY = """
 query DrugDiseaseAssociations($chemblId: String!) {
   drug(chemblId: $chemblId) {
     id
     name
+    hasBeenWithdrawn
+    blackBoxWarning
+    yearOfFirstApproval
+    maximumClinicalTrialPhase
     linkedDiseases {
       count
       rows {
@@ -147,7 +152,39 @@ class OpenTargetsAdapter(SourceAdapter):
             "variables": {"chemblId": chembl_id},
         }
         data = await self._http.post(self.base_url, data=payload)
-        return self._parse_drug_disease_response(data, chembl_id)
+        associations, _drug_meta = self._parse_drug_disease_response_with_meta(data, chembl_id)
+        return associations
+
+    async def get_drug_metadata(
+        self,
+        chembl_id: str,
+    ) -> dict[str, Any]:
+        """Get drug-level clinical metadata from Open Targets for a given ChEMBL ID.
+
+        CF-E08: Returns hasBeenWithdrawn, blackBoxWarning, yearOfFirstApproval,
+        and maximumClinicalTrialPhase fields from the extended drug query.
+
+        Args:
+            chembl_id: ChEMBL compound identifier (e.g., "CHEMBL25").
+
+        Returns:
+            Dictionary with drug-level metadata keys:
+                - has_been_withdrawn (bool | None)
+                - black_box_warning (bool | None)
+                - year_of_first_approval (int | None)
+                - maximum_clinical_trial_phase (float | None)
+            Returns empty dict if the drug is not found.
+
+        Raises:
+            SourceError: If the GraphQL response contains errors.
+        """
+        payload = {
+            "query": _DRUG_DISEASE_QUERY,
+            "variables": {"chemblId": chembl_id},
+        }
+        data = await self._http.post(self.base_url, data=payload)
+        _associations, drug_meta = self._parse_drug_disease_response_with_meta(data, chembl_id)
+        return drug_meta
 
     async def get_target_info(
         self,
@@ -197,8 +234,32 @@ class OpenTargetsAdapter(SourceAdapter):
         Raises:
             SourceError: If the response contains GraphQL errors.
         """
+        associations, _meta = self._parse_drug_disease_response_with_meta(data, chembl_id)
+        return associations
+
+    def _parse_drug_disease_response_with_meta(
+        self,
+        data: Any,
+        chembl_id: str,
+    ) -> tuple[list[TargetAssociation], dict[str, Any]]:
+        """Parse Open Targets GraphQL drug/disease response into associations and metadata.
+
+        CF-E08: Also extracts drug-level clinical/regulatory metadata
+        (hasBeenWithdrawn, blackBoxWarning, yearOfFirstApproval,
+        maximumClinicalTrialPhase) from the extended query.
+
+        Args:
+            data: Raw GraphQL response dict.
+            chembl_id: The ChEMBL ID that was queried (for error context).
+
+        Returns:
+            Tuple of (list[TargetAssociation], drug_metadata_dict).
+
+        Raises:
+            SourceError: If the response contains GraphQL errors.
+        """
         if not isinstance(data, dict):
-            return []
+            return [], {}
 
         # R-OT-08: raise SourceError on GraphQL errors
         if data.get("errors"):
@@ -211,14 +272,22 @@ class OpenTargetsAdapter(SourceAdapter):
 
         drug_data = data.get("data", {})
         if not drug_data:
-            return []
+            return [], {}
 
         drug = drug_data.get("drug")
         if not drug:
             # R-OT-07: no associations found -> return empty list
-            return []
+            return [], {}
 
         associations: list[TargetAssociation] = []
+
+        # CF-E08: extract drug-level clinical/regulatory metadata
+        drug_meta: dict[str, Any] = {
+            "has_been_withdrawn": drug.get("hasBeenWithdrawn"),
+            "black_box_warning": drug.get("blackBoxWarning"),
+            "year_of_first_approval": drug.get("yearOfFirstApproval"),
+            "maximum_clinical_trial_phase": drug.get("maximumClinicalTrialPhase"),
+        }
 
         # Parse linkedDiseases which contains scored disease associations
         linked_diseases = drug.get("linkedDiseases") or {}
@@ -280,7 +349,7 @@ class OpenTargetsAdapter(SourceAdapter):
             )
             associations.append(assoc)
 
-        return associations
+        return associations, drug_meta
 
 
 __all__ = ["OpenTargetsAdapter"]

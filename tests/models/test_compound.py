@@ -216,3 +216,84 @@ class TestCompoundMerge:
         merged = c1.merge(c2)
         assert merged.properties.molecular_weight == 46.07
         assert merged.properties.xlogp == -0.3
+
+
+class TestCompoundCFE08Fields:
+    """Tests for CF-E08: clinical/regulatory and cross-reference fields on Compound."""
+
+    def test_clinical_fields_default_none(self) -> None:
+        """max_phase, molecule_type, is_withdrawn, black_box_warning default to None."""
+        c = Compound(smiles="CCO")
+        assert c.max_phase is None
+        assert c.molecule_type is None
+        assert c.is_withdrawn is None
+        assert c.black_box_warning is None
+
+    def test_cross_reference_fields_default_none(self) -> None:
+        """drugbank_id, kegg_id, chebi_id default to None."""
+        c = Compound(smiles="CCO")
+        assert c.drugbank_id is None
+        assert c.kegg_id is None
+        assert c.chebi_id is None
+
+    def test_max_phase_stored(self) -> None:
+        """max_phase=4 (approved) is stored correctly."""
+        c = Compound(smiles="CC(=O)Oc1ccccc1C(O)=O", max_phase=4)
+        assert c.max_phase == 4
+
+    def test_max_phase_zero_is_not_none(self) -> None:
+        """max_phase=0 (preclinical) is stored as 0, not treated as falsy/None."""
+        c = Compound(smiles="CCO", max_phase=0)
+        assert c.max_phase == 0
+        assert c.max_phase is not None
+
+    def test_molecule_type_stored(self) -> None:
+        """molecule_type is stored correctly."""
+        c = Compound(smiles="CCO", molecule_type="Small molecule")
+        assert c.molecule_type == "Small molecule"
+
+    def test_is_withdrawn_flag(self) -> None:
+        """is_withdrawn bool flag is stored."""
+        c = Compound(smiles="CCO", is_withdrawn=True)
+        assert c.is_withdrawn is True
+
+    def test_black_box_warning_flag(self) -> None:
+        """black_box_warning bool flag is stored."""
+        c = Compound(smiles="CCO", black_box_warning=True)
+        assert c.black_box_warning is True
+
+    def test_drugbank_id_stored(self) -> None:
+        """drugbank_id is stored correctly."""
+        c = Compound(smiles="CC(=O)Oc1ccccc1C(O)=O", drugbank_id="DB00945")
+        assert c.drugbank_id == "DB00945"
+
+    def test_kegg_id_stored(self) -> None:
+        """kegg_id is stored correctly."""
+        c = Compound(smiles="CC(=O)Oc1ccccc1C(O)=O", kegg_id="D00109")
+        assert c.kegg_id == "D00109"
+
+    def test_chebi_id_stored(self) -> None:
+        """chebi_id is stored correctly."""
+        c = Compound(smiles="CC(=O)Oc1ccccc1C(O)=O", chebi_id="CHEBI:15365")
+        assert c.chebi_id == "CHEBI:15365"
+
+    def test_cf_e08_fields_in_model_dump(self) -> None:
+        """All CF-E08 fields appear in model_dump output."""
+        c = Compound(
+            smiles="CCO",
+            max_phase=4,
+            molecule_type="Small molecule",
+            is_withdrawn=False,
+            black_box_warning=False,
+            drugbank_id="DB00945",
+            kegg_id="D00109",
+            chebi_id="CHEBI:15365",
+        )
+        d = c.model_dump()
+        assert d["max_phase"] == 4
+        assert d["molecule_type"] == "Small molecule"
+        assert d["is_withdrawn"] is False
+        assert d["black_box_warning"] is False
+        assert d["drugbank_id"] == "DB00945"
+        assert d["kegg_id"] == "D00109"
+        assert d["chebi_id"] == "CHEBI:15365"

@@ -155,6 +155,38 @@ class UniChemAdapter(SourceAdapter):
             results[ident] = await self.map_identifiers(ident, source_type)
         return results
 
+    async def enrich_compound_xrefs(self, compound: Compound) -> None:
+        """Enrich a Compound with cross-reference IDs from UniChem.
+
+        Fetches all available database cross-references using the compound's
+        InChIKey (preferred) or PubChem CID and stores DrugBank, KEGG, and
+        ChEBI identifiers directly on the compound.
+
+        Args:
+            compound: The Compound object to enrich in place.
+        """
+        mappings: dict[str, str] = {}
+
+        if compound.inchikey:
+            mappings = await self.cross_reference(compound.inchikey)
+        elif compound.cid:
+            mappings = await self.map_identifiers(str(compound.cid), "pubchem")
+
+        if not mappings:
+            return
+
+        # Store ChEMBL ID if not already present
+        if not compound.chembl_id and mappings.get("chembl"):
+            compound.chembl_id = mappings["chembl"]
+
+        # CF-E08: store cross-reference IDs instead of discarding them
+        if not compound.drugbank_id and mappings.get("drugbank"):
+            compound.drugbank_id = mappings["drugbank"]
+        if not compound.kegg_id and mappings.get("kegg"):
+            compound.kegg_id = mappings["kegg"]
+        if not compound.chebi_id and mappings.get("chebi"):
+            compound.chebi_id = mappings["chebi"]
+
     # --- Private helpers ---
 
     def _parse_mappings(self, data: Any) -> dict[str, str]:
