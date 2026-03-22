@@ -100,11 +100,10 @@ def xref_cmd(
         sys.exit(1)
 
     try:
-        import asyncio
-
         from chemfuse import map_identifiers_async
+        from chemfuse.cli._async import _run_async
 
-        mapping = asyncio.run(
+        mapping = _run_async(
             map_identifiers_async(
                 cid=cid,
                 chembl_id=chembl_id,

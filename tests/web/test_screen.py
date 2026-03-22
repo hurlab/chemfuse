@@ -6,6 +6,8 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 
+from chemfuse.web._utils import _make_params_hash
+
 
 class TestScreenPageRender:
     """Test Batch Screen page rendering."""
@@ -172,9 +174,22 @@ class TestRunPipeline:
         patch_st.session_state["batch_results"] = df
         from chemfuse.web.pages.screen import render
 
-        # Provide a valid uploaded CSV so we get to the results display
+        # Provide a valid uploaded CSV so we get to the results display.
         mock_file = MagicMock()
+        mock_file.name = "test.csv"
         patch_st.file_uploader.return_value = mock_file
+        # Pre-seed the params hash so the staleness check does not clear results.
+        patch_st.checkbox.side_effect = [False, False]
+        patch_st.toggle.side_effect = [False, True, False]
+        params = {
+            "upload_name": "test.csv",
+            "use_pubchem": False,
+            "use_chembl": False,
+            "run_admet": False,
+            "run_druglikeness": True,
+            "run_clustering": False,
+        }
+        patch_st.session_state["_batch_params_hash"] = _make_params_hash(params)
         with patch("pandas.read_csv", return_value=pd.DataFrame({"smiles": ["CC(=O)Oc1ccccc1C(=O)O"]})):
             render()
 
@@ -318,3 +333,82 @@ class TestRenderFilterConfiguration:
             render()
         toggle_calls = " ".join(str(c) for c in patch_st.toggle.call_args_list)
         assert "Drug" in toggle_calls or "drug" in toggle_calls or "likeness" in toggle_calls.lower()
+
+
+class TestBatchScreenStaleness:
+    """Verify that stale batch_results are cleared when parameters change."""
+
+    def _make_mock_file(self, name: str = "compounds.csv") -> MagicMock:
+        mock_file = MagicMock()
+        mock_file.name = name
+        return mock_file
+
+    def test_changing_file_clears_cached_results(self, patch_st: MagicMock) -> None:
+        """When a new file is uploaded, batch_results is cleared from session state."""
+        stored_results = pd.DataFrame({"smiles": ["CCO"], "lipinski_pass": [True]})
+        patch_st.session_state["batch_results"] = stored_results
+        patch_st.session_state["_batch_params_hash"] = None  # force detection
+        patch_st.file_uploader.return_value = self._make_mock_file("new_file.csv")
+
+        with patch(
+            "pandas.read_csv",
+            return_value=pd.DataFrame({"smiles": ["CCO"]}),
+        ):
+            from chemfuse.web.pages.screen import render
+            render()
+
+        assert patch_st.session_state.get("batch_results") is None
+
+    def test_changing_option_clears_cached_results(self, patch_st: MagicMock) -> None:
+        """When a pipeline option changes, batch_results is cleared."""
+        stored_results = pd.DataFrame({"smiles": ["CCO"], "lipinski_pass": [True]})
+        patch_st.session_state["batch_results"] = stored_results
+        # Store a hash corresponding to run_admet=False
+        params = {
+            "upload_name": "compounds.csv",
+            "use_pubchem": False,
+            "use_chembl": False,
+            "run_admet": False,
+            "run_druglikeness": True,
+            "run_clustering": False,
+        }
+        patch_st.session_state["_batch_params_hash"] = _make_params_hash(params)
+        patch_st.file_uploader.return_value = self._make_mock_file("compounds.csv")
+        # Simulate user toggling ADMET on
+        patch_st.toggle.side_effect = [True, True, False]  # admet=True, dl=True, cluster=False
+
+        with patch(
+            "pandas.read_csv",
+            return_value=pd.DataFrame({"smiles": ["CCO"]}),
+        ):
+            from chemfuse.web.pages.screen import render
+            render()
+
+        assert patch_st.session_state.get("batch_results") is None
+
+    def test_unchanged_params_preserve_cached_results(self, patch_st: MagicMock) -> None:
+        """When all params stay the same, batch_results is preserved."""
+        stored_results = pd.DataFrame({"smiles": ["CCO"], "lipinski_pass": [True]})
+        patch_st.session_state["batch_results"] = stored_results
+        params = {
+            "upload_name": "compounds.csv",
+            "use_pubchem": False,
+            "use_chembl": False,
+            "run_admet": False,
+            "run_druglikeness": False,
+            "run_clustering": False,
+        }
+        patch_st.session_state["_batch_params_hash"] = _make_params_hash(params)
+        patch_st.file_uploader.return_value = self._make_mock_file("compounds.csv")
+        # Checkboxes and toggles return same values as stored hash
+        patch_st.checkbox.side_effect = [False, False]
+        patch_st.toggle.side_effect = [False, False, False]
+
+        with patch(
+            "pandas.read_csv",
+            return_value=pd.DataFrame({"smiles": ["CCO"]}),
+        ):
+            from chemfuse.web.pages.screen import render
+            render()
+
+        assert patch_st.session_state.get("batch_results") is not None

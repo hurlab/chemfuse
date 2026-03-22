@@ -33,6 +33,10 @@ class Settings(BaseSettings):
         default=604800,  # 7 days
         description="Cache time-to-live in seconds",
     )
+    cache_max_entries: int = Field(
+        default=10000,
+        description="Maximum number of entries in the cache (0 = unlimited). When exceeded, the oldest 10% of entries (by last_accessed) are evicted.",
+    )
 
     # Source settings
     default_sources: list[str] = Field(

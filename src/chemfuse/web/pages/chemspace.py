@@ -5,7 +5,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from chemfuse.web._utils import _find_smiles_column
+from chemfuse.web._utils import _find_smiles_column, _params_changed
 
 
 def render() -> None:
@@ -22,6 +22,7 @@ def render() -> None:
     )
 
     df: pd.DataFrame | None = None
+    _upload_name: str | None = None
 
     if source_choice == "Session results":
         compounds = st.session_state.get("session_compounds", [])
@@ -38,6 +39,7 @@ def render() -> None:
             key="chemspace_upload",
         )
         if uploaded is not None:
+            _upload_name = uploaded.name
             try:
                 df = pd.read_csv(uploaded)
                 st.success(f"Loaded {len(df)} rows.")
@@ -76,6 +78,17 @@ def render() -> None:
         color_options,
         key="chemspace_color_by",
     )
+
+    # Detect parameter changes and clear stale plot data when they occur.
+    _current_params = {
+        "source": source_choice,
+        "upload_name": _upload_name,
+        "method": method,
+        "fp_type": fp_type,
+        "color_by": color_by,
+    }
+    if _params_changed(st.session_state, "_chemspace_params_hash", _current_params):
+        st.session_state.pop("chemspace_plot_data", None)
 
     if st.button("Compute Chemical Space", type="primary", key="chemspace_compute_btn"):
         _compute_and_plot(df, smiles_col, method, fp_type, color_by)

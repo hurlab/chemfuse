@@ -109,11 +109,10 @@ def search_cmd(
         effective_sources = list(sources)
 
     try:
-        import asyncio
-
         from chemfuse import search_async
+        from chemfuse.cli._async import _run_async
 
-        collection = asyncio.run(
+        collection = _run_async(
             search_async(
                 query,
                 sources=effective_sources,

@@ -21,6 +21,39 @@ _PROPERTIES_TO_COMPARE = [
 _DRUGLIKENESS_FILTERS = ["Lipinski", "Veber", "Ghose", "Egan", "Muegge"]
 
 
+def _stable_id(compound: dict[str, Any]) -> str:
+    """Return a stable identifier for a compound dict.
+
+    Priority: CID (int) -> SMILES -> name.  The returned string is suitable
+    as a dictionary key and does not change when the surrounding list grows or
+    shrinks.
+    """
+    cid = compound.get("cid")
+    if cid is not None:
+        return f"cid:{cid}"
+    smiles = compound.get("smiles")
+    if smiles:
+        return f"smiles:{smiles}"
+    name = compound.get("name")
+    if name:
+        return f"name:{name}"
+    return f"idx:{id(compound)}"
+
+
+def _display_label(compound: dict[str, Any]) -> str:
+    """Return a human-readable label for a compound dict."""
+    cid = compound.get("cid")
+    name = compound.get("name")
+    smiles = compound.get("smiles", "")
+    if cid and name:
+        return f"CID: {cid} - {name}"
+    if cid:
+        return f"CID: {cid}"
+    if name:
+        return name
+    return smiles[:30] if smiles else "Unknown"
+
+
 def render() -> None:
     """Render the Compare page."""
     st.header("Compound Comparison")
@@ -34,25 +67,37 @@ def render() -> None:
         )
         return
 
-    # Compound selection
-    compound_names = [
-        c.get("name") or c.get("smiles", "Unknown")[:20]
-        for c in session_compounds
-    ]
-    selected_indices = st.multiselect(
+    # Build stable identifiers for each compound so that adding or removing
+    # other compounds from the session does not shift the selection.
+    # Priority: CID -> SMILES -> name.  Duplicates are disambiguated with a
+    # numeric suffix so the lookup dict remains injective.
+    id_to_compound: dict[str, dict[str, Any]] = {}
+    id_to_label: dict[str, str] = {}
+    for c in session_compounds:
+        stable_id = _stable_id(c)
+        # Deduplicate: if the same key already exists append a counter
+        base = stable_id
+        suffix = 1
+        while stable_id in id_to_compound:
+            stable_id = f"{base}#{suffix}"
+            suffix += 1
+        id_to_compound[stable_id] = c
+        id_to_label[stable_id] = _display_label(c)
+
+    selected_ids = st.multiselect(
         "Select compounds to compare (2–4)",
-        options=list(range(len(session_compounds))),
-        format_func=lambda i: compound_names[i],
+        options=list(id_to_compound.keys()),
+        format_func=lambda sid: id_to_label[sid],
         key="compare_selection",
         max_selections=4,
     )
 
-    if len(selected_indices) < 2:
+    if len(selected_ids) < 2:
         st.info("Select at least 2 compounds.")
         return
 
-    selected = [session_compounds[i] for i in selected_indices]
-    names = [compound_names[i] for i in selected_indices]
+    selected = [id_to_compound[sid] for sid in selected_ids]
+    names = [id_to_label[sid] for sid in selected_ids]
 
     # Render comparison sections
     _render_property_comparison(selected, names)

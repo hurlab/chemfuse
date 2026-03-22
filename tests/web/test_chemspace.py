@@ -6,6 +6,8 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 
+from chemfuse.web._utils import _make_params_hash, _params_changed
+
 
 class TestChemSpacePageRender:
     """Test Chemical Space page rendering."""
@@ -146,3 +148,108 @@ class TestRenderPlot:
 
         _render_plot(df, "cluster")
         patch_st.plotly_chart.assert_not_called()
+
+
+class TestParamsHashUtility:
+    """Tests for the _make_params_hash and _params_changed helpers."""
+
+    def test_same_params_produce_same_hash(self) -> None:
+        """Identical parameter dicts produce the same hash."""
+        params = {"method": "PCA", "fp_type": "morgan", "color_by": "cluster"}
+        assert _make_params_hash(params) == _make_params_hash(params)
+
+    def test_different_params_produce_different_hash(self) -> None:
+        """Changing a parameter value changes the hash."""
+        params_a = {"method": "PCA", "fp_type": "morgan"}
+        params_b = {"method": "UMAP", "fp_type": "morgan"}
+        assert _make_params_hash(params_a) != _make_params_hash(params_b)
+
+    def test_params_changed_returns_true_on_first_call(self) -> None:
+        """_params_changed returns True when no previous hash is stored."""
+        state = {}
+        assert _params_changed(state, "_test_hash", {"method": "PCA"}) is True
+
+    def test_params_changed_returns_false_when_params_unchanged(self) -> None:
+        """_params_changed returns False when params are identical to last call."""
+        state = {}
+        params = {"method": "PCA", "fp_type": "morgan"}
+        _params_changed(state, "_test_hash", params)  # first call stores hash
+        assert _params_changed(state, "_test_hash", params) is False
+
+    def test_params_changed_returns_true_after_param_update(self) -> None:
+        """_params_changed returns True after a parameter value changes."""
+        state = {}
+        _params_changed(state, "_test_hash", {"method": "PCA"})
+        assert _params_changed(state, "_test_hash", {"method": "UMAP"}) is True
+
+    def test_params_changed_updates_stored_hash(self) -> None:
+        """After a change, the stored hash reflects the new parameter set."""
+        state = {}
+        _params_changed(state, "_test_hash", {"method": "PCA"})
+        _params_changed(state, "_test_hash", {"method": "UMAP"})
+        # Now calling again with UMAP should return False (hash was updated)
+        assert _params_changed(state, "_test_hash", {"method": "UMAP"}) is False
+
+
+class TestChemSpaceStaleness:
+    """Verify that stale chemspace_plot_data is cleared on parameter change."""
+
+    def _make_df_with_smiles(self) -> pd.DataFrame:
+        return pd.DataFrame({
+            "smiles": ["CCO", "CCCO", "CC(=O)O", "c1ccccc1"],
+            "name": ["a", "b", "c", "d"],
+        })
+
+    def test_changing_method_clears_cached_plot(self, patch_st: MagicMock) -> None:
+        """When the method changes, chemspace_plot_data is removed from session state."""
+        # Seed session state with stale plot data computed with PCA
+        patch_st.session_state["chemspace_plot_data"] = pd.DataFrame({"x": [1.0], "y": [2.0]})
+        patch_st.session_state["_chemspace_params_hash"] = None  # force detection
+        patch_st.radio.return_value = "Session results"
+        patch_st.session_state["session_compounds"] = [
+            {"smiles": s, "name": n}
+            for s, n in zip(
+                ["CCO", "CCCO", "CC(=O)O", "c1ccccc1"],
+                ["a", "b", "c", "d"],
+                strict=True,
+            )
+        ]
+        # Simulate user switching from PCA to UMAP
+        patch_st.selectbox.side_effect = ["UMAP", "morgan", "cluster"]
+
+        from chemfuse.web.pages.chemspace import render
+        render()
+
+        # Plot data must have been cleared because hash did not match
+        assert patch_st.session_state.get("chemspace_plot_data") is None
+
+    def test_unchanged_params_preserve_cached_plot(self, patch_st: MagicMock) -> None:
+        """When params are unchanged, chemspace_plot_data is preserved."""
+        stored_plot = pd.DataFrame({"x": [1.0], "y": [2.0]})
+        patch_st.session_state["chemspace_plot_data"] = stored_plot
+        patch_st.radio.return_value = "Session results"
+        patch_st.session_state["session_compounds"] = [
+            {"smiles": s, "name": n}
+            for s, n in zip(
+                ["CCO", "CCCO", "CC(=O)O", "c1ccccc1"],
+                ["a", "b", "c", "d"],
+                strict=True,
+            )
+        ]
+        # Set up a pre-stored hash that matches these params
+        from chemfuse.web._utils import _make_params_hash
+        params = {
+            "source": "Session results",
+            "upload_name": None,
+            "method": "PCA",
+            "fp_type": "morgan",
+            "color_by": "cluster",
+        }
+        patch_st.session_state["_chemspace_params_hash"] = _make_params_hash(params)
+        patch_st.selectbox.side_effect = ["PCA", "morgan", "cluster"]
+
+        from chemfuse.web.pages.chemspace import render
+        render()
+
+        # Plot data must still be present because params did not change
+        assert patch_st.session_state.get("chemspace_plot_data") is not None

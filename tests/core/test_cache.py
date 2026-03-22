@@ -1,5 +1,6 @@
 """Tests for chemfuse.core.cache."""
 
+import sqlite3
 import time
 from pathlib import Path
 
@@ -133,3 +134,112 @@ class TestCacheStats:
         cache.get("https://example.com")
         stats = cache.stats()
         assert stats.get("total_hits", 0) >= 0  # Hit tracking is optional
+
+
+class TestCacheMaxEntries:
+    """Tests for LRU eviction and the max_entries limit."""
+
+    def test_eviction_enforces_max_entries(self, cache_dir: Path):
+        # With max_entries=5 and eviction fraction=10% (min 1), inserting 6
+        # entries should trigger eviction leaving at most 5.
+        c = Cache(cache_dir=cache_dir, max_entries=5)
+        for i in range(6):
+            c.set(f"https://example.com/{i}", {"i": i})
+        stats = c.cache_stats()
+        assert stats["total_entries"] <= 5
+        c.close()
+
+    def test_eviction_removes_lru_entries(self, cache_dir: Path):
+        # Insert 5 entries then access entry #0 to make it recently used.
+        # Then insert a 6th entry which should evict the true LRU (entry #1).
+        c = Cache(cache_dir=cache_dir, max_entries=5)
+        for i in range(5):
+            c.set(f"https://example.com/{i}", {"i": i})
+        # Touch entry 0 so it becomes most-recently used.
+        time.sleep(0.01)
+        c.get("https://example.com/0")
+        # Insert a 6th entry to trigger eviction.
+        time.sleep(0.01)
+        c.set("https://example.com/5", {"i": 5})
+        # Entry 0 was accessed recently so it should still be present.
+        assert c.get("https://example.com/0") == {"i": 0}
+        c.close()
+
+    def test_no_eviction_when_below_limit(self, cache_dir: Path):
+        c = Cache(cache_dir=cache_dir, max_entries=100)
+        for i in range(10):
+            c.set(f"https://example.com/{i}", {"i": i})
+        assert c.cache_stats()["total_entries"] == 10
+        c.close()
+
+    def test_zero_max_entries_disables_eviction(self, cache_dir: Path):
+        # max_entries=0 means unlimited; no eviction should occur.
+        c = Cache(cache_dir=cache_dir, max_entries=0)
+        for i in range(20):
+            c.set(f"https://example.com/{i}", {"i": i})
+        assert c.cache_stats()["total_entries"] == 20
+        c.close()
+
+
+class TestCacheStatsMethod:
+    def test_cache_stats_includes_max_entries(self, cache: Cache):
+        stats = cache.cache_stats()
+        assert "max_entries" in stats
+        assert stats["max_entries"] == cache.max_entries
+
+    def test_cache_stats_entry_count(self, cache: Cache):
+        cache.set("https://a.com", {"a": 1})
+        cache.set("https://b.com", {"b": 2})
+        stats = cache.cache_stats()
+        assert stats["total_entries"] == 2
+
+    def test_cache_stats_db_size_bytes(self, cache: Cache):
+        cache.set("https://a.com", {"a": 1})
+        stats = cache.cache_stats()
+        assert stats["db_size_bytes"] > 0
+
+
+class TestCacheClearCache:
+    def test_clear_cache_removes_all(self, cache: Cache):
+        cache.set("https://a.com", {"a": 1})
+        cache.set("https://b.com", {"b": 2})
+        removed = cache.clear_cache()
+        assert removed == 2
+        assert cache.cache_stats()["total_entries"] == 0
+
+
+class TestLastAccessedMigration:
+    def test_existing_db_without_last_accessed_is_migrated(self, cache_dir: Path):
+        # Create an old-style database without the last_accessed column.
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        db_path = cache_dir / "chemfuse_cache.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.execute("""
+            CREATE TABLE cache (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                created_at REAL NOT NULL,
+                expires_at REAL NOT NULL,
+                url TEXT,
+                hit_count INTEGER DEFAULT 0
+            )
+        """)
+        now = time.time()
+        conn.execute(
+            "INSERT INTO cache (key, value, created_at, expires_at, url) VALUES (?, ?, ?, ?, ?)",
+            ("oldkey", '{"legacy": true}', now, now + 3600, "https://legacy.com"),
+        )
+        conn.commit()
+        conn.close()
+
+        # Opening the Cache should migrate the column without error.
+        c = Cache(cache_dir=cache_dir)
+        cols = {
+            row[1]
+            for row in c._conn.execute("PRAGMA table_info(cache)").fetchall()
+        }
+        assert "last_accessed" in cols
+        # Existing data should still be readable.
+        result = c._conn.execute("SELECT value FROM cache WHERE key = 'oldkey'").fetchone()
+        assert result is not None
+        c.close()

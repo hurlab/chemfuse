@@ -6,7 +6,6 @@ Runs the full compound screening pipeline:
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import sys
 from pathlib import Path
@@ -308,10 +307,9 @@ def _search_single(query: str, sources: list[str], limit: int) -> list:
     """Search a single query across sources. Returns list of Compound objects."""
     try:
         from chemfuse import search_async
+        from chemfuse.cli._async import _run_async
 
-        collection = asyncio.run(
-            search_async(query, sources=sources, limit=limit)
-        )
+        collection = _run_async(search_async(query, sources=sources, limit=limit))
         return list(collection.compounds) if collection else []
     except Exception as exc:
         logger.debug("Search failed for %r: %s", query, exc)

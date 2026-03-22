@@ -8,7 +8,7 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
-from chemfuse.web._utils import _find_smiles_column
+from chemfuse.web._utils import _find_smiles_column, _params_changed
 
 
 def render() -> None:
@@ -56,6 +56,18 @@ def render() -> None:
         run_admet = st.toggle("ADMET predictions", value=False, key="batch_admet")
         run_druglikeness = st.toggle("Drug-likeness filters", value=True, key="batch_dl")
         run_clustering = st.toggle("Clustering", value=False, key="batch_cluster")
+
+    # Detect parameter changes and clear stale results when they occur.
+    _current_params = {
+        "upload_name": uploaded_file.name,
+        "use_pubchem": use_pubchem,
+        "use_chembl": use_chembl,
+        "run_admet": run_admet,
+        "run_druglikeness": run_druglikeness,
+        "run_clustering": run_clustering,
+    }
+    if _params_changed(st.session_state, "_batch_params_hash", _current_params):
+        st.session_state.pop("batch_results", None)
 
     # Run button
     if st.button("Run Screening Pipeline", type="primary", key="batch_run_btn"):

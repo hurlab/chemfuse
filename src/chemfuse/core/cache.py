@@ -11,6 +11,9 @@ from typing import Any
 
 DEFAULT_CACHE_DIR = Path.home() / ".chemfuse" / "cache"
 DEFAULT_TTL_SECONDS = 604800  # 7 days
+DEFAULT_MAX_ENTRIES = 10000
+# Evict this fraction of max_entries when the limit is exceeded.
+_EVICT_FRACTION = 0.10
 
 
 class Cache:
@@ -25,6 +28,7 @@ class Cache:
         cache_dir: Path | str | None = None,
         ttl: int = DEFAULT_TTL_SECONDS,
         enabled: bool = True,
+        max_entries: int = DEFAULT_MAX_ENTRIES,
     ) -> None:
         """Initialize the cache.
 
@@ -32,9 +36,12 @@ class Cache:
             cache_dir: Directory to store the SQLite database. Defaults to ~/.chemfuse/cache.
             ttl: Time-to-live in seconds for cached entries. Defaults to 7 days.
             enabled: Whether caching is enabled.
+            max_entries: Maximum number of entries before LRU eviction is triggered.
+                Set to 0 to disable the limit. Defaults to 10000.
         """
         self.enabled = enabled
         self.ttl = ttl
+        self.max_entries = max_entries
 
         if cache_dir is None:
             cache_dir = DEFAULT_CACHE_DIR
@@ -46,7 +53,11 @@ class Cache:
             self._init_db()
 
     def _init_db(self) -> None:
-        """Initialize the SQLite database and create tables if needed."""
+        """Initialize the SQLite database and create tables if needed.
+
+        Handles migration for existing databases that pre-date the
+        last_accessed column by adding it when absent.
+        """
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
         self._conn.execute("PRAGMA journal_mode=WAL")
@@ -57,11 +68,22 @@ class Cache:
                 created_at REAL NOT NULL,
                 expires_at REAL NOT NULL,
                 url TEXT,
-                hit_count INTEGER DEFAULT 0
+                hit_count INTEGER DEFAULT 0,
+                last_accessed REAL
             )
         """)
+        # Migrate existing databases that lack last_accessed.
+        existing_cols = {
+            row[1]
+            for row in self._conn.execute("PRAGMA table_info(cache)").fetchall()
+        }
+        if "last_accessed" not in existing_cols:
+            self._conn.execute("ALTER TABLE cache ADD COLUMN last_accessed REAL")
         self._conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_expires_at ON cache (expires_at)
+        """)
+        self._conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_last_accessed ON cache (last_accessed)
         """)
         self._conn.commit()
 
@@ -104,8 +126,8 @@ class Cache:
         row = cursor.fetchone()
         if row is not None:
             self._conn.execute(
-                "UPDATE cache SET hit_count = hit_count + 1 WHERE key = ?",
-                (key,),
+                "UPDATE cache SET hit_count = hit_count + 1, last_accessed = ? WHERE key = ?",
+                (now, key),
             )
             self._conn.commit()
             return json.loads(row[0])
@@ -134,11 +156,41 @@ class Cache:
         expires_at = now + (ttl if ttl is not None else self.ttl)
 
         self._conn.execute(
-            """INSERT OR REPLACE INTO cache (key, value, created_at, expires_at, url, hit_count)
-               VALUES (?, ?, ?, ?, ?, 0)""",
-            (key, json.dumps(value), now, expires_at, url),
+            """INSERT OR REPLACE INTO cache
+               (key, value, created_at, expires_at, url, hit_count, last_accessed)
+               VALUES (?, ?, ?, ?, ?, 0, ?)""",
+            (key, json.dumps(value), now, expires_at, url, now),
         )
         self._conn.commit()
+        self._evict_lru_if_needed()
+
+    def _evict_lru_if_needed(self) -> int:
+        """Evict least-recently-used entries when max_entries is exceeded.
+
+        Removes the oldest 10% of entries (by last_accessed) to avoid running
+        eviction on every subsequent write.  No-op when max_entries is 0.
+
+        Returns:
+            Number of entries deleted.
+        """
+        if not self.max_entries or self._conn is None:
+            return 0
+
+        total: int = self._conn.execute("SELECT COUNT(*) FROM cache").fetchone()[0]
+        if total <= self.max_entries:
+            return 0
+
+        evict_count = max(1, int(self.max_entries * _EVICT_FRACTION))
+        cursor = self._conn.execute(
+            """DELETE FROM cache WHERE key IN (
+                   SELECT key FROM cache
+                   ORDER BY COALESCE(last_accessed, created_at) ASC
+                   LIMIT ?
+               )""",
+            (evict_count,),
+        )
+        self._conn.commit()
+        return cursor.rowcount
 
     def invalidate(self, url: str, params: dict[str, Any] | None = None) -> bool:
         """Delete a specific cached entry.
@@ -185,14 +237,29 @@ class Cache:
         self._conn.commit()
         return cursor.rowcount
 
-    def stats(self) -> dict[str, Any]:
-        """Get cache statistics.
+    def clear_cache(self) -> int:
+        """Remove all cached entries.
 
         Returns:
-            Dictionary with total_entries, expired_entries, total_hits, db_size_bytes.
+            Number of entries removed.
+        """
+        return self.clear()
+
+    def cache_stats(self) -> dict[str, Any]:
+        """Return entry count and database size statistics.
+
+        Returns:
+            Dictionary with total_entries, expired_entries, total_hits,
+            db_size_bytes, and max_entries.
         """
         if not self.enabled or self._conn is None:
-            return {"total_entries": 0, "expired_entries": 0, "total_hits": 0, "db_size_bytes": 0}
+            return {
+                "total_entries": 0,
+                "expired_entries": 0,
+                "total_hits": 0,
+                "db_size_bytes": 0,
+                "max_entries": self.max_entries,
+            }
 
         now = time.time()
         total = self._conn.execute("SELECT COUNT(*) FROM cache").fetchone()[0]
@@ -209,7 +276,19 @@ class Cache:
             "expired_entries": expired,
             "total_hits": hits,
             "db_size_bytes": db_size,
+            "max_entries": self.max_entries,
         }
+
+    def stats(self) -> dict[str, Any]:
+        """Get cache statistics.
+
+        .. deprecated::
+            Use :meth:`cache_stats` instead.
+
+        Returns:
+            Dictionary with total_entries, expired_entries, total_hits, db_size_bytes.
+        """
+        return self.cache_stats()
 
     def close(self) -> None:
         """Close the database connection."""
