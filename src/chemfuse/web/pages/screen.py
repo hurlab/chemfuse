@@ -8,6 +8,8 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
+from chemfuse.web._utils import _find_smiles_column
+
 
 def render() -> None:
     """Render the Batch Screen page."""
@@ -33,7 +35,7 @@ def render() -> None:
         st.error(f"Failed to read CSV: {exc}")
         return
 
-    smiles_col = _find_smiles_column(df_input)
+    smiles_col = _find_smiles_column(df_input.columns)
     if smiles_col is None:
         st.error("No 'smiles' column found in the uploaded CSV.")
         return
@@ -86,13 +88,6 @@ def _show_example_format() -> None:
         })
         st.dataframe(example, use_container_width=True, hide_index=True)
 
-
-def _find_smiles_column(df: pd.DataFrame) -> str | None:
-    """Find the SMILES column in a dataframe (case-insensitive)."""
-    for col in df.columns:
-        if col.lower() == "smiles":
-            return col
-    return None
 
 
 def _run_pipeline(
@@ -154,7 +149,6 @@ def _run_pipeline(
 def _compute_druglikeness(smiles_list: list[str]) -> dict[str, list[Any]]:
     """Compute drug-likeness for a list of SMILES."""
     lipinski_pass = []
-    mw_values = []
 
     for smi in smiles_list:
         try:
@@ -168,7 +162,6 @@ def _compute_druglikeness(smiles_list: list[str]) -> dict[str, list[Any]]:
                 lipinski_pass.append(None)
         except Exception:
             lipinski_pass.append(None)
-        mw_values.append(None)
 
     return {"lipinski_pass": lipinski_pass}
 
@@ -181,8 +174,8 @@ def _compute_admet(smiles_list: list[str]) -> dict[str, list[Any]]:
         if preds and isinstance(preds, list) and preds:
             keys = list(preds[0].keys()) if isinstance(preds[0], dict) else []
             return {k: [p.get(k) for p in preds] for k in keys}
-    except Exception:
-        pass
+    except Exception as exc:
+        st.warning(f"ADMET computation failed: {exc}")
     return {}
 
 
@@ -192,7 +185,8 @@ def _compute_clusters(smiles_list: list[str]) -> list[int | None]:
         from chemfuse.analyze.clustering import cluster_compounds
         labels = cluster_compounds(smiles_list)
         return list(labels)
-    except Exception:
+    except Exception as exc:
+        st.warning(f"Clustering computation failed: {exc}")
         return [None] * len(smiles_list)
 
 

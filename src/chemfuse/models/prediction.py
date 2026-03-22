@@ -57,15 +57,6 @@ class DrugLikeness(BaseModel):
             "muegge": self.muegge.pass_filter,
         }
 
-    def all_passed(self) -> bool:
-        """Return True if all five filters pass.
-
-        Provided as a method for backwards compatibility; use the
-        ``overall_pass`` property for idiomatic Pydantic access.
-        """
-        return self.overall_pass
-
-
 class PAINSAlert(BaseModel):
     """A single PAINS (Pan Assay Interference Compound) substructure alert."""
 

@@ -91,28 +91,3 @@ def render_druglikeness_checkboxes() -> list[str]:
         if st.checkbox(name, key=f"dl_filter_{name}"):
             selected.append(name)
     return selected
-
-
-def render_full_sidebar_filters() -> dict[str, object]:
-    """Render a complete sidebar filter panel including property ranges and drug-likeness.
-
-    Returns:
-        Dictionary with keys 'property_ranges' and 'druglikeness_filters'.
-    """
-    st.markdown("**Property Filters**")
-    property_ranges = render_property_filters(
-        show_mw=True,
-        show_logp=True,
-        show_tpsa=True,
-        show_hbd=True,
-        show_hba=True,
-        show_rotbonds=True,
-    )
-
-    st.divider()
-    druglikeness_filters = render_druglikeness_checkboxes()
-
-    return {
-        "property_ranges": property_ranges,
-        "druglikeness_filters": druglikeness_filters,
-    }

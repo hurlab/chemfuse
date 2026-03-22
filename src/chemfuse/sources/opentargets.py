@@ -274,7 +274,6 @@ class OpenTargetsAdapter(SourceAdapter):
                             source=self.name,
                         )
                         associations.append(assoc)
-                        break  # one target per disease row for the primary association
                 else:
                     # No linked targets available; use drug name or chembl_id as placeholder
                     drug_name = drug.get("name") or chembl_id

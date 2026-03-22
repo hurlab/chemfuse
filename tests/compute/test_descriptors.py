@@ -122,13 +122,13 @@ class TestIsValidSmiles:
         from chemfuse.compute.descriptors import is_valid_smiles
         assert is_valid_smiles(INVALID_SMILES) is False
 
-    def test_rdkit_not_available_returns_true(self):
-        """When RDKit is not available, assume SMILES is valid."""
+    def test_rdkit_not_available_returns_false(self):
+        """When RDKit is not available, cannot validate — return False."""
         import chemfuse.compute.descriptors as desc_mod
         original = desc_mod.RDKIT_AVAILABLE
         desc_mod.RDKIT_AVAILABLE = False
         try:
-            assert desc_mod.is_valid_smiles(INVALID_SMILES) is True
+            assert desc_mod.is_valid_smiles(INVALID_SMILES) is False
         finally:
             desc_mod.RDKIT_AVAILABLE = original
 

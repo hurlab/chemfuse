@@ -81,17 +81,17 @@ def compute_descriptors_batch(smiles_list: list[str]) -> list[dict[str, float]]:
 def is_valid_smiles(smiles: str) -> bool:
     """Check whether a SMILES string is chemically valid.
 
-    When RDKit is not available the function conservatively returns True
-    (cannot determine validity without a parser).
+    When RDKit is not available the function returns False because validity
+    cannot be determined without a parser.
 
     Args:
         smiles: SMILES string to validate.
 
     Returns:
-        True if the SMILES is valid (or RDKit is not available), False otherwise.
+        True if the SMILES is valid, False if invalid or RDKit is not available.
     """
     if not RDKIT_AVAILABLE:
-        return True
+        return False
 
     mol = Chem.MolFromSmiles(smiles)
     return mol is not None

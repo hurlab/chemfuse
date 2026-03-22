@@ -6,6 +6,7 @@ Uses RDKit SVG generation when available, falls back to PubChem PNG URLs.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 import streamlit as st
@@ -20,6 +21,24 @@ try:
     _RDKIT_AVAILABLE = True
 except ImportError:
     pass
+
+
+def _sanitize_svg(svg: str) -> str:
+    """Remove script tags and event handlers from SVG to prevent XSS.
+
+    Args:
+        svg: Raw SVG string from RDKit.
+
+    Returns:
+        Sanitized SVG string safe for embedding with unsafe_allow_html.
+    """
+    # Remove script elements entirely
+    svg = re.sub(r'<script[^>]*>.*?</script>', '', svg, flags=re.DOTALL | re.IGNORECASE)
+    # Remove on* event handler attributes (double-quoted values)
+    svg = re.sub(r'\s+on\w+\s*=\s*"[^"]*"', '', svg, flags=re.IGNORECASE)
+    # Remove on* event handler attributes (single-quoted values)
+    svg = re.sub(r"\s+on\w+\s*=\s*'[^']*'", '', svg, flags=re.IGNORECASE)
+    return svg
 
 
 def is_rdkit_available() -> bool:
@@ -93,8 +112,9 @@ def render_mol_card(
         svg_data = smiles_to_svg(smiles, width=width, height=height)
 
     if svg_data:
+        safe_svg = _sanitize_svg(svg_data)
         st.markdown(
-            f'<div class="mol-card">{svg_data}</div>',
+            f'<div class="mol-card">{safe_svg}</div>',
             unsafe_allow_html=True,
         )
     elif cid:
@@ -112,7 +132,7 @@ def render_mol_card(
     # Select button
     if on_click_session_key and st.button(
         "View Profile",
-        key=f"mol_select_{name}_{cid or id(compound)}",
+        key=f"mol_select_{name}_{cid or hash(smiles or '') or 'no_id'}",
     ):
         st.session_state[on_click_session_key] = compound
         st.session_state["current_page"] = "Profile"

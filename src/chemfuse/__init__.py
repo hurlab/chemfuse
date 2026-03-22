@@ -36,7 +36,14 @@ def _run_sync(coro: Any) -> Any:
         if loop.is_running():
             raise RuntimeError("running")
         return loop.run_until_complete(coro)
-    except RuntimeError:
+    except RuntimeError as exc:
+        exc_msg = str(exc).lower()
+        if (
+            "running" not in exc_msg
+            and "closed" not in exc_msg
+            and "no current event loop" not in exc_msg
+        ):
+            raise
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
@@ -123,8 +130,7 @@ async def search_async(
             logger.warning("search: source %s failed: %s", source_name, result)
         else:
             all_compounds.extend(result[:limit])
-            if source_name not in successful_sources:
-                successful_sources.append(source_name)
+            successful_sources.append(source_name)
 
     # Merge compounds by InChIKey
     merged = _merge_by_inchikey(all_compounds)
@@ -214,23 +220,33 @@ async def find_similar_async(
     if sources is None:
         sources = ["pubchem"]
 
+    # Filter to only sources that support get_similarity
+    capable_sources = []
+    for source_name in sources:
+        adapter = registry.get(source_name)
+        if getattr(adapter, "get_similarity", None) is not None:
+            capable_sources.append(source_name)
+
+    async def _search_similar_one(source_name: str) -> list[Compound]:
+        adapter = registry.get(source_name)
+        get_sim = adapter.get_similarity
+        return await get_sim(smiles, threshold=threshold, max_results=max_results)
+
+    results = await asyncio.gather(
+        *[_search_similar_one(s) for s in capable_sources],
+        return_exceptions=True,
+    )
+
     all_compounds: list[Compound] = []
     source_names: list[str] = []
 
-    for source_name in sources:
-        adapter = registry.get(source_name)
-        get_sim = getattr(adapter, "get_similarity", None)
-        if get_sim is None:
-            continue
-        try:
-            compounds = await get_sim(
-                smiles, threshold=threshold, max_results=max_results
-            )
-            all_compounds.extend(compounds)
+    for source_name, result in zip(capable_sources, results, strict=True):
+        if isinstance(result, (SourceError, NotFoundError, Exception)):
+            logger.debug("find_similar_async: source %s failed: %s", source_name, result)
+        else:
+            all_compounds.extend(result)
             if source_name not in source_names:
                 source_names.append(source_name)
-        except (SourceError, NotFoundError) as e:
-            logger.debug("find_similar_async: source %s failed: %s", source_name, e)
 
     return CompoundCollection(
         compounds=all_compounds,
@@ -288,10 +304,17 @@ async def cross_reference_async(
 
     for source_name in target_sources:
         adapter = registry.get(source_name)
-        query = compound.inchikey or compound.smiles
+        if compound.inchikey:
+            query = compound.inchikey
+            query_type = "inchikey"
+        elif compound.smiles:
+            query = compound.smiles
+            query_type = "smiles"
+        else:
+            query = compound.name
+            query_type = "name"
         if not query:
             continue
-        query_type = "inchi" if compound.inchi else ("smiles" if compound.smiles else "name")
         try:
             results = await adapter.search(query, query_type=query_type)
             if results:
@@ -338,9 +361,9 @@ async def map_identifiers_async(
         Dictionary mapping database names to identifiers.
         Returns dict with only the input entry if no mappings found.
     """
-    from chemfuse.sources.unichem import UniChemAdapter
+    from chemfuse.sources import registry
 
-    unichem = UniChemAdapter()
+    unichem = registry.get("unichem")
     result: dict[str, str] = {}
 
     if inchikey:

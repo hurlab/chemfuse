@@ -6,7 +6,7 @@ import httpx
 import pytest
 import respx
 
-from chemfuse.core.exceptions import NotFoundError, TimeoutError
+from chemfuse.core.exceptions import TimeoutError
 from chemfuse.sources.pubchem import PUBCHEM_BASE_URL, PubChemAdapter
 
 
@@ -91,14 +91,14 @@ class TestSearchByName:
         assert compounds[0].name is not None
 
     @respx.mock
-    async def test_search_by_name_not_found(self, adapter: PubChemAdapter):
+    async def test_search_by_name_not_found_returns_empty(self, adapter: PubChemAdapter):
         respx.get(url__regex=r".*/name/.*").mock(
             return_value=httpx.Response(
                 404, json={"Fault": {"Message": "No CID found"}}
             )
         )
-        with pytest.raises(NotFoundError):
-            await adapter.search("nonexistent_compound_xyz", query_type="name")
+        result = await adapter.search("nonexistent_compound_xyz", query_type="name")
+        assert result == []
 
     @respx.mock
     async def test_search_uses_default_type(

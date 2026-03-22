@@ -5,6 +5,8 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
+from chemfuse.web._utils import _find_smiles_column
+
 
 def render() -> None:
     """Render the Chemical Space page."""
@@ -46,7 +48,7 @@ def render() -> None:
         return
 
     # Find SMILES column
-    smiles_col = _find_smiles_column(df)
+    smiles_col = _find_smiles_column(df.columns)
     if smiles_col is None:
         st.error("No 'smiles' column found.")
         return
@@ -82,13 +84,6 @@ def render() -> None:
     if "chemspace_plot_data" in st.session_state:
         _render_plot(st.session_state["chemspace_plot_data"], color_by)
 
-
-def _find_smiles_column(df: pd.DataFrame) -> str | None:
-    """Find the SMILES column (case-insensitive)."""
-    for col in df.columns:
-        if col.lower() == "smiles":
-            return col
-    return None
 
 
 def _compute_and_plot(

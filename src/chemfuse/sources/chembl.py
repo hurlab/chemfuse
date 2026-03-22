@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from urllib.parse import quote
 
 from chemfuse.core.exceptions import NotFoundError
 from chemfuse.models.bioactivity import Bioactivity
@@ -81,7 +82,7 @@ class ChEMBLAdapter(SourceAdapter):
         ):
             compound = await self.get_by_id(query)
             if compound is None:
-                raise NotFoundError(f"ChEMBL compound not found: {query}", identifier=query)
+                return []
             return [compound]
 
         if qt == "smiles":
@@ -120,7 +121,7 @@ class ChEMBLAdapter(SourceAdapter):
         """
         try:
             data = await self._http.get(
-                f"/molecule/{chembl_id}",
+                f"/molecule/{quote(chembl_id, safe='')}",
                 params={"format": "json"},
             )
         except NotFoundError:
@@ -148,12 +149,21 @@ class ChEMBLAdapter(SourceAdapter):
         activities: list[Bioactivity] = []
         url = "/activity"
         params: dict[str, Any] = {
-            "molecule_chembl_id": chembl_id,
+            "molecule_chembl_id": quote(chembl_id, safe=""),
             "format": "json",
             "limit": min(limit, 1000),
         }
 
+        max_pages = 100
+        page_count = 0
         while True:
+            page_count += 1
+            if page_count > max_pages:
+                logger.warning(
+                    "ChEMBL pagination limit reached (%d pages)", max_pages,
+                )
+                break
+
             data = await self._http.get(url, params=params)
             if not isinstance(data, dict):
                 break

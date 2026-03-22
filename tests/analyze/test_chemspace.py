@@ -35,6 +35,11 @@ def _make_coords(n=5, dims=2):
     return np.random.rand(n, dims)
 
 
+def _mock_fp_matrix(smiles_list, fp_type="morgan", n_bits=2048):
+    """Mock fp_matrix that returns a random bit matrix."""
+    return np.random.randint(0, 2, size=(len(smiles_list), n_bits), dtype=np.uint8)
+
+
 class TestReduceDimensions:
     def test_requires_rdkit(self):
         """Raises OptionalDependencyError when RDKit is absent."""
@@ -57,14 +62,7 @@ class TestReduceDimensions:
 
         with _patch_rdkit(True), _patch_sklearn(True), \
              patch("chemfuse.analyze.chemspace.PCA", return_value=mock_pca), \
-             patch("chemfuse.analyze.chemspace.Chem") as mock_chem, \
-             patch("chemfuse.analyze.chemspace.DataStructs") as mock_ds, \
-             patch("chemfuse.analyze.chemspace.AllChem") as mock_allchem:
-
-            mol = MagicMock()
-            mock_chem.MolFromSmiles.return_value = mol
-            mock_allchem.GetMorganFingerprintAsBitVect.return_value = MagicMock()
-            mock_ds.ConvertToNumpyArray = lambda fp, arr: None
+             patch("chemfuse.analyze.chemspace._shared_fp_matrix", side_effect=_mock_fp_matrix):
 
             from chemfuse.analyze import chemspace
             result = chemspace.reduce_dimensions(SMILES_LIST, method="pca")
@@ -79,14 +77,7 @@ class TestReduceDimensions:
 
         with _patch_rdkit(True), _patch_sklearn(True), \
              patch("chemfuse.analyze.chemspace.TSNE", return_value=mock_tsne), \
-             patch("chemfuse.analyze.chemspace.Chem") as mock_chem, \
-             patch("chemfuse.analyze.chemspace.DataStructs") as mock_ds, \
-             patch("chemfuse.analyze.chemspace.AllChem") as mock_allchem:
-
-            mol = MagicMock()
-            mock_chem.MolFromSmiles.return_value = mol
-            mock_allchem.GetMorganFingerprintAsBitVect.return_value = MagicMock()
-            mock_ds.ConvertToNumpyArray = lambda fp, arr: None
+             patch("chemfuse.analyze.chemspace._shared_fp_matrix", side_effect=_mock_fp_matrix):
 
             from chemfuse.analyze import chemspace
             result = chemspace.reduce_dimensions(SMILES_LIST, method="tsne")
@@ -101,14 +92,7 @@ class TestReduceDimensions:
 
         with _patch_rdkit(True), _patch_sklearn(True), _patch_umap(True), \
              patch("chemfuse.analyze.chemspace.UMAP", return_value=mock_umap), \
-             patch("chemfuse.analyze.chemspace.Chem") as mock_chem, \
-             patch("chemfuse.analyze.chemspace.DataStructs") as mock_ds, \
-             patch("chemfuse.analyze.chemspace.AllChem") as mock_allchem:
-
-            mol = MagicMock()
-            mock_chem.MolFromSmiles.return_value = mol
-            mock_allchem.GetMorganFingerprintAsBitVect.return_value = MagicMock()
-            mock_ds.ConvertToNumpyArray = lambda fp, arr: None
+             patch("chemfuse.analyze.chemspace._shared_fp_matrix", side_effect=_mock_fp_matrix):
 
             from chemfuse.analyze import chemspace
             result = chemspace.reduce_dimensions(SMILES_LIST, method="umap")
@@ -123,14 +107,7 @@ class TestReduceDimensions:
 
         with _patch_rdkit(True), _patch_sklearn(True), _patch_umap(False), \
              patch("chemfuse.analyze.chemspace.PCA", return_value=mock_pca), \
-             patch("chemfuse.analyze.chemspace.Chem") as mock_chem, \
-             patch("chemfuse.analyze.chemspace.DataStructs") as mock_ds, \
-             patch("chemfuse.analyze.chemspace.AllChem") as mock_allchem:
-
-            mol = MagicMock()
-            mock_chem.MolFromSmiles.return_value = mol
-            mock_allchem.GetMorganFingerprintAsBitVect.return_value = MagicMock()
-            mock_ds.ConvertToNumpyArray = lambda fp, arr: None
+             patch("chemfuse.analyze.chemspace._shared_fp_matrix", side_effect=_mock_fp_matrix):
 
             from chemfuse.analyze import chemspace
             with warnings.catch_warnings(record=True) as w:
@@ -144,14 +121,7 @@ class TestReduceDimensions:
     def test_single_compound_returns_zeros(self):
         """Single compound returns zero array of correct shape."""
         with _patch_rdkit(True), _patch_sklearn(True), \
-             patch("chemfuse.analyze.chemspace.Chem") as mock_chem, \
-             patch("chemfuse.analyze.chemspace.DataStructs") as mock_ds, \
-             patch("chemfuse.analyze.chemspace.AllChem") as mock_allchem:
-
-            mol = MagicMock()
-            mock_chem.MolFromSmiles.return_value = mol
-            mock_allchem.GetMorganFingerprintAsBitVect.return_value = MagicMock()
-            mock_ds.ConvertToNumpyArray = lambda fp, arr: None
+             patch("chemfuse.analyze.chemspace._shared_fp_matrix", side_effect=_mock_fp_matrix):
 
             from chemfuse.analyze import chemspace
             result = chemspace.reduce_dimensions(["CCO"], method="pca")

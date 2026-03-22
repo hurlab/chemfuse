@@ -9,6 +9,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import numpy as np
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -37,6 +39,64 @@ SUPPORTED_FP_TYPES = (
     _FP_TOPOLOGICAL_TORSION,
     _FP_ATOM_PAIR,
 )
+
+
+def fp_matrix(smiles_list: list[str], fp_type: str = "morgan", n_bits: int = 2048) -> np.ndarray:
+    """Build a numpy bit-vector matrix from a list of SMILES strings.
+
+    Handles MACCS (167-bit), RDKit, and Morgan fingerprints.  Invalid SMILES
+    produce an all-zero row rather than raising an exception.
+
+    Args:
+        smiles_list: List of SMILES strings.
+        fp_type: Fingerprint type ('morgan', 'maccs', 'rdkit').
+        n_bits: Bit vector length for morgan/rdkit fingerprints.
+
+    Returns:
+        numpy ndarray of shape (len(smiles_list), actual_bits).
+
+    Raises:
+        ImportError: If RDKit is not installed.
+    """
+    import logging
+
+    import numpy as np
+
+    _logger = logging.getLogger(__name__)
+
+    if not RDKIT_AVAILABLE:
+        raise ImportError("Install rdkit: pip install chemfuse[rdkit]")
+
+    # Determine actual bit length from fp_type
+    if fp_type == "maccs":
+        actual_bits = 167
+    elif fp_type == "rdkit":
+        actual_bits = n_bits
+    else:
+        actual_bits = n_bits
+
+    rows = []
+    for smi in smiles_list:
+        try:
+            mol = Chem.MolFromSmiles(smi)
+            if mol is None:
+                rows.append(np.zeros(actual_bits, dtype=np.uint8))
+                continue
+            if fp_type == "maccs":
+                fp = MACCSkeys.GenMACCSKeys(mol)
+                arr = np.zeros(167, dtype=np.uint8)
+            elif fp_type == "rdkit":
+                fp = Chem.RDKFingerprint(mol)
+                arr = np.zeros(n_bits, dtype=np.uint8)
+            else:
+                fp = AllChem.GetMorganFingerprintAsBitVect(mol, radius=2, nBits=n_bits)
+                arr = np.zeros(n_bits, dtype=np.uint8)
+            DataStructs.ConvertToNumpyArray(fp, arr)
+            rows.append(arr)
+        except Exception as exc:
+            _logger.warning("fp_matrix: skipping %r: %s", smi, exc)
+            rows.append(np.zeros(actual_bits, dtype=np.uint8))
+    return np.array(rows, dtype=float)
 
 
 def compute_fingerprint(

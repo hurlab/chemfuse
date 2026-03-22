@@ -6,6 +6,8 @@ from typing import Any
 
 import streamlit as st
 
+from chemfuse.web._utils import _run_async
+
 
 def render() -> None:
     """Render the Compound Profile page."""
@@ -47,28 +49,24 @@ def _render_manual_lookup() -> None:
 
 def _lookup_compound(identifier: str) -> dict[str, Any] | None:
     """Fetch compound data by CID or SMILES."""
-    import asyncio
-
     async def _run() -> dict[str, Any] | None:
-        try:
-            from chemfuse.sources.pubchem import PubChemSource
-            src = PubChemSource()
-            async with src:
-                if identifier.isdigit():
-                    results = await src.search(identifier, query_type="cid")
-                else:
-                    results = await src.search(identifier, query_type="smiles")
-            if results:
-                c = results[0]
-                return c.to_dict() if hasattr(c, "to_dict") else {}
-        except Exception as exc:
-            st.error(f"Lookup error: {exc}")
+        from chemfuse.sources.pubchem import PubChemSource
+        src = PubChemSource()
+        async with src:
+            if identifier.isdigit():
+                results = await src.search(identifier, query_type="cid")
+            else:
+                results = await src.search(identifier, query_type="smiles")
+        if results:
+            c = results[0]
+            return c.to_dict() if hasattr(c, "to_dict") else {}
         return None
 
-    loop = asyncio.new_event_loop()
-    result = loop.run_until_complete(_run())
-    loop.close()
-    return result
+    try:
+        return _run_async(_run())
+    except Exception as exc:
+        st.error(f"Lookup error: {exc}")
+        return None
 
 
 def _render_compound_profile(data: dict[str, Any]) -> None:
@@ -201,8 +199,8 @@ def _render_druglikeness(data: dict[str, Any]) -> None:
                     "rotatable_bonds": data.get("rotatable_bonds"),
                 }
                 dl_data = check_drug_likeness(props, smiles=smiles)
-            except Exception:
-                pass
+            except Exception as exc:
+                st.warning(f"Drug-likeness computation failed: {exc}")
 
     if dl_data is None:
         st.caption("Drug-likeness data not available. SMILES required.")
@@ -239,6 +237,17 @@ def _render_admet(data: dict[str, Any]) -> None:
         st.caption("SMILES required for ADMET predictions.")
         return
 
+    # Show cached ADMET data if available (H15)
+    cached_admet = data.get("admet")
+    if cached_admet:
+        import pandas as pd
+        st.dataframe(
+            pd.DataFrame(cached_admet),
+            use_container_width=True,
+            hide_index=True,
+        )
+        return
+
     if st.button("Predict ADMET", key="admet_predict_btn"):
         with st.spinner("Computing ADMET predictions..."):
             try:
@@ -251,6 +260,9 @@ def _render_admet(data: dict[str, Any]) -> None:
                         use_container_width=True,
                         hide_index=True,
                     )
+                    # Persist ADMET results in session state (H15)
+                    data["admet"] = preds
+                    st.session_state["selected_compound"] = data
                 else:
                     st.info("No ADMET predictions available.")
             except Exception as exc:
@@ -277,25 +289,22 @@ def _render_bioactivities(data: dict[str, Any]) -> None:
 
 def _enrich_bioactivities(data: dict[str, Any]) -> None:
     """Fetch bioactivities from ChEMBL and update session state."""
-    import asyncio
+    chembl_id = data.get("chembl_id")
+    if not chembl_id:
+        st.warning("ChEMBL ID required for bioactivity enrichment.")
+        return
 
     async def _run() -> list[Any]:
-        chembl_id = data.get("chembl_id")
-        if not chembl_id:
-            st.warning("ChEMBL ID required for bioactivity enrichment.")
-            return []
-        try:
-            from chemfuse.sources.chembl import ChEMBLSource
-            src = ChEMBLSource()
-            async with src:
-                return await src.get_bioactivities(chembl_id)
-        except Exception as exc:
-            st.error(f"ChEMBL enrichment failed: {exc}")
-            return []
+        from chemfuse.sources.chembl import ChEMBLSource
+        src = ChEMBLSource()
+        async with src:
+            return await src.get_bioactivities(chembl_id)
 
-    loop = asyncio.new_event_loop()
-    bioacts = loop.run_until_complete(_run())
-    loop.close()
+    try:
+        bioacts = _run_async(_run())
+    except Exception as exc:
+        st.error(f"ChEMBL enrichment failed: {exc}")
+        return
 
     if bioacts:
         data["bioactivities"] = bioacts
@@ -317,8 +326,13 @@ def _render_binding(data: dict[str, Any]) -> None:
     else:
         st.caption("No binding data loaded.")
 
-    if st.button("Enrich from BindingDB", key="enrich_bindingdb_btn"):
-        st.info("BindingDB enrichment requires SMILES.")
+    # H16: Replace non-functional stub button with a clearly disabled button
+    st.button(
+        "Enrich from BindingDB",
+        key="enrich_bindingdb_btn",
+        disabled=True,
+        help="Not yet implemented",
+    )
 
 
 def _render_patents(data: dict[str, Any]) -> None:
@@ -334,8 +348,13 @@ def _render_patents(data: dict[str, Any]) -> None:
     else:
         st.caption("No patent data loaded.")
 
-    if st.button("Enrich from SureChEMBL", key="enrich_surechembl_btn"):
-        st.info("SureChEMBL enrichment requires InChIKey or SMILES.")
+    # H16: Replace non-functional stub button with a clearly disabled button
+    st.button(
+        "Enrich from SureChEMBL",
+        key="enrich_surechembl_btn",
+        disabled=True,
+        help="Not yet implemented",
+    )
 
 
 def _render_targets(data: dict[str, Any]) -> None:
@@ -351,5 +370,10 @@ def _render_targets(data: dict[str, Any]) -> None:
     else:
         st.caption("No target-disease data loaded.")
 
-    if st.button("Enrich from Open Targets", key="enrich_opentargets_btn"):
-        st.info("Open Targets enrichment requires ChEMBL ID.")
+    # H16: Replace non-functional stub button with a clearly disabled button
+    st.button(
+        "Enrich from Open Targets",
+        key="enrich_opentargets_btn",
+        disabled=True,
+        help="Not yet implemented",
+    )

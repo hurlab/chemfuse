@@ -9,6 +9,7 @@ import logging
 
 import numpy as np
 
+from chemfuse.compute.fingerprints import fp_matrix as _shared_fp_matrix
 from chemfuse.core.exceptions import OptionalDependencyError
 
 logger = logging.getLogger(__name__)
@@ -61,29 +62,12 @@ def _get_fp(smiles: str, fp_type: str = "morgan") -> object:
 
 
 def _fp_matrix(smiles_list: list[str], fp_type: str = "morgan", n_bits: int = 2048) -> np.ndarray:
-    """Build a numpy bit-vector matrix from SMILES."""
-    rows = []
-    for smi in smiles_list:
-        try:
-            mol = Chem.MolFromSmiles(smi)
-            if mol is None:
-                rows.append(np.zeros(n_bits, dtype=np.uint8))
-                continue
-            if fp_type == "maccs":
-                fp = MACCSkeys.GenMACCSKeys(mol)
-                arr = np.zeros(167, dtype=np.uint8)
-            elif fp_type == "rdkit":
-                fp = Chem.RDKFingerprint(mol)
-                arr = np.zeros(n_bits, dtype=np.uint8)
-            else:
-                fp = AllChem.GetMorganFingerprintAsBitVect(mol, radius=2, nBits=n_bits)
-                arr = np.zeros(n_bits, dtype=np.uint8)
-            DataStructs.ConvertToNumpyArray(fp, arr)
-            rows.append(arr)
-        except Exception as exc:
-            logger.warning("_fp_matrix: skipping %r: %s", smi, exc)
-            rows.append(np.zeros(n_bits, dtype=np.uint8))
-    return np.array(rows, dtype=float)
+    """Build a numpy bit-vector matrix from SMILES.
+
+    Delegates to the shared fp_matrix() in chemfuse.compute.fingerprints
+    which correctly handles MACCS (167-bit) and other fingerprint dimensions.
+    """
+    return _shared_fp_matrix(smiles_list, fp_type=fp_type, n_bits=n_bits)
 
 
 def butina_clustering(
@@ -208,3 +192,37 @@ def compute_silhouette(
     except Exception as exc:
         logger.warning("silhouette_score failed: %s", exc)
         return None
+
+
+def cluster_compounds(
+    smiles_list: list[str],
+    method: str = "butina",
+    n_clusters: int = 5,
+    threshold: float = 0.65,
+    fp_type: str = "morgan",
+    n_bits: int = 2048,
+) -> list[int]:
+    """Cluster compounds by structural similarity. Convenience wrapper.
+
+    Args:
+        smiles_list: List of SMILES strings.
+        method: Clustering method ('butina' or 'kmeans').
+        n_clusters: Number of clusters for KMeans.
+        threshold: Distance cutoff for Butina (1 - Tanimoto similarity).
+        fp_type: Fingerprint type ('morgan', 'maccs', 'rdkit').
+        n_bits: Fingerprint bit length.
+
+    Returns:
+        List of integer cluster labels, one per input SMILES.
+    """
+    if method == "kmeans":
+        return kmeans_clustering(smiles_list, n_clusters=n_clusters, fp_type=fp_type)
+    return butina_clustering(smiles_list, cutoff=1.0 - threshold, fp_type=fp_type)
+
+
+__all__ = [
+    "butina_clustering",
+    "cluster_compounds",
+    "compute_silhouette",
+    "kmeans_clustering",
+]

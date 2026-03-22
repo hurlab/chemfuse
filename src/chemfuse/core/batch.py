@@ -13,6 +13,9 @@ if TYPE_CHECKING:
     from chemfuse.models.compound import Compound
 
 
+MAX_BATCH_SIZE = 10_000
+
+
 def _detect_query_type(query: str) -> str:
     """Auto-detect query type from the query string.
 
@@ -134,6 +137,9 @@ async def batch_search_async(
     if not queries:
         return CompoundCollection(compounds=[], query="batch", sources=sources or ["pubchem"]), []
 
+    if len(queries) > MAX_BATCH_SIZE:
+        raise ValueError(f"Batch size {len(queries)} exceeds maximum {MAX_BATCH_SIZE}")
+
     active_sources = sources or ["pubchem"]
     total = len(queries)
     results: list[Compound] = []
@@ -167,8 +173,17 @@ async def batch_search_async(
     tasks = [search_single(q) for q in queries]
     await asyncio.gather(*tasks)
 
+    # Deduplicate by InChIKey or SMILES to avoid redundant results
+    seen: set[str] = set()
+    unique: list[Compound] = []
+    for c in results:
+        key = c.inchikey or c.smiles or str(id(c))
+        if key not in seen:
+            seen.add(key)
+            unique.append(c)
+
     collection = CompoundCollection(
-        compounds=results,
+        compounds=unique,
         query=f"batch:{input_path.name}",
         sources=active_sources,
     )

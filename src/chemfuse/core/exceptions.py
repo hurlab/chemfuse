@@ -57,10 +57,14 @@ class ValidationError(ChemFuseError):
     pass
 
 
-class TimeoutError(ChemFuseError):
+class ChemFuseTimeoutError(ChemFuseError):
     """Raised when a request or operation times out."""
 
     pass
+
+
+# Backward-compatible alias; ChemFuseTimeoutError is the canonical name.
+TimeoutError = ChemFuseTimeoutError
 
 
 class OptionalDependencyError(ChemFuseError):

@@ -4,10 +4,29 @@ from __future__ import annotations
 
 import json
 import sys
+from pathlib import Path
 
 import click
 
 from chemfuse.core.exceptions import ChemFuseError
+
+
+def _validate_output_path(path: Path) -> Path:
+    """Validate output path is safe.
+
+    Args:
+        path: Output file path.
+
+    Returns:
+        Resolved path.
+
+    Raises:
+        click.BadParameter: If the path contains traversal components.
+    """
+    resolved = path.resolve()
+    if ".." in path.parts:
+        raise click.BadParameter(f"Path traversal not allowed: {path}")
+    return resolved
 
 
 @click.command("xref")
@@ -105,6 +124,7 @@ def xref_cmd(
         sys.exit(0)
 
     if output:
+        _validate_output_path(Path(output))
         with open(output, "w") as f:
             json.dump(mapping, f, indent=2)
         click.echo(f"Results saved to: {output}", err=True)

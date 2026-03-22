@@ -8,10 +8,13 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from chemfuse._version import __version__
 from chemfuse.core.exceptions import NotFoundError, RateLimitError, SourceError, TimeoutError
 
 if TYPE_CHECKING:
     from chemfuse.core.cache import Cache
+
+MAX_RESPONSE_SIZE = 50 * 1024 * 1024  # 50 MB
 
 
 class RateLimiter:
@@ -82,7 +85,7 @@ class AsyncHTTPClient:
         self._client: httpx.AsyncClient | None = None
         self._default_headers = {
             "Accept": "application/json",
-            "User-Agent": "ChemFuse/0.1.0 (Python; httpx)",
+            "User-Agent": f"ChemFuse/{__version__} (Python; httpx)",
             **(headers or {}),
         }
 
@@ -96,48 +99,58 @@ class AsyncHTTPClient:
             )
         return self._client
 
-    async def get(
+    async def _request_with_retry(
         self,
-        path: str,
+        method: str,
+        url: str,
+        *,
         params: dict[str, Any] | None = None,
-        use_cache: bool = True,
-    ) -> Any:
-        """Make a GET request.
+        json_data: dict[str, Any] | None = None,
+        form_data: dict[str, Any] | None = None,
+    ) -> httpx.Response:
+        """Make an HTTP request with retry logic for transient errors.
+
+        Retries on 429, 500, 502, 503, 504 status codes and on
+        httpx.ConnectError, httpx.TimeoutException. Uses exponential backoff.
 
         Args:
-            path: URL path relative to base_url, or full URL.
+            method: HTTP method ("GET" or "POST").
+            url: Full URL for the request.
             params: Query parameters.
-            use_cache: Whether to use the cache.
+            json_data: JSON body (for POST requests).
+            form_data: Form-encoded body (for POST requests).
 
         Returns:
-            Parsed JSON response.
+            httpx.Response object with a successful or non-retryable status.
 
         Raises:
-            SourceError: On API errors.
             NotFoundError: When resource is not found (404).
+            SourceError: On API errors or response too large.
             RateLimitError: When rate limit is exhausted after retries.
             TimeoutError: When request times out after retries.
         """
-        url = path if path.startswith("http") else f"{self.base_url}/{path.lstrip('/')}"
-
-        # Check cache
-        if use_cache and self.cache:
-            cached = self.cache.get(url, params)
-            if cached is not None:
-                return cached
-
         last_exc: Exception | None = None
         for attempt in range(self.max_retries):
             await self._rate_limiter.acquire()
             try:
                 client = await self._get_client()
-                response = await client.get(url, params=params)
+                if method == "GET":
+                    response = await client.get(url, params=params)
+                else:
+                    response = await client.post(
+                        url, json=json_data, data=form_data, params=params,
+                    )
+
+                # Check response size before reading body
+                content_length = int(response.headers.get("content-length", 0))
+                if content_length > MAX_RESPONSE_SIZE:
+                    raise SourceError(
+                        f"Response too large: {content_length} bytes",
+                        source=self.source_name,
+                    )
 
                 if response.status_code == 200:
-                    data = self._parse_response(response)
-                    if use_cache and self.cache:
-                        self.cache.set(url, data, params)
-                    return data
+                    return response
 
                 elif response.status_code == 404:
                     error_msg = self._extract_error(response)
@@ -155,7 +168,7 @@ class AsyncHTTPClient:
                     )
 
                 elif response.status_code in self.RETRYABLE_STATUS_CODES:
-                    wait_time = (2.0 ** attempt)
+                    wait_time = 2.0 ** attempt
                     await asyncio.sleep(wait_time)
                     if response.status_code == 429:
                         retry_after_str = response.headers.get("Retry-After")
@@ -218,6 +231,42 @@ class AsyncHTTPClient:
             url=url,
         )
 
+    async def get(
+        self,
+        path: str,
+        params: dict[str, Any] | None = None,
+        use_cache: bool = True,
+    ) -> Any:
+        """Make a GET request.
+
+        Args:
+            path: URL path relative to base_url, or full URL.
+            params: Query parameters.
+            use_cache: Whether to use the cache.
+
+        Returns:
+            Parsed JSON response.
+
+        Raises:
+            SourceError: On API errors.
+            NotFoundError: When resource is not found (404).
+            RateLimitError: When rate limit is exhausted after retries.
+            TimeoutError: When request times out after retries.
+        """
+        url = path if path.startswith("http") else f"{self.base_url}/{path.lstrip('/')}"
+
+        # Check cache
+        if use_cache and self.cache:
+            cached = self.cache.get(url, params)
+            if cached is not None:
+                return cached
+
+        response = await self._request_with_retry("GET", url, params=params)
+        data = self._parse_response(response)
+        if use_cache and self.cache:
+            self.cache.set(url, data, params)
+        return data
+
     async def post(
         self,
         path: str,
@@ -235,31 +284,10 @@ class AsyncHTTPClient:
             Parsed JSON response.
         """
         url = path if path.startswith("http") else f"{self.base_url}/{path.lstrip('/')}"
-        await self._rate_limiter.acquire()
-
-        try:
-            client = await self._get_client()
-            response = await client.post(url, json=data, params=params)
-
-            if response.status_code == 200:
-                return self._parse_response(response)
-            elif response.status_code == 404:
-                error_msg = self._extract_error(response)
-                raise NotFoundError(f"Not found: {error_msg}")
-            else:
-                error_msg = self._extract_error(response)
-                raise SourceError(
-                    f"HTTP {response.status_code}: {error_msg}",
-                    source=self.source_name,
-                    url=url,
-                    status_code=response.status_code,
-                )
-        except (NotFoundError, SourceError):
-            raise
-        except httpx.TimeoutException as exc:
-            raise TimeoutError(
-                f"POST request timed out for {self.source_name}"
-            ) from exc
+        response = await self._request_with_retry(
+            "POST", url, params=params, json_data=data,
+        )
+        return self._parse_response(response)
 
     async def post_form(
         self,
@@ -278,31 +306,10 @@ class AsyncHTTPClient:
             Parsed JSON response.
         """
         url = path if path.startswith("http") else f"{self.base_url}/{path.lstrip('/')}"
-        await self._rate_limiter.acquire()
-
-        try:
-            client = await self._get_client()
-            response = await client.post(url, data=form_data, params=params)
-
-            if response.status_code == 200:
-                return self._parse_response(response)
-            elif response.status_code == 404:
-                error_msg = self._extract_error(response)
-                raise NotFoundError(f"Not found: {error_msg}")
-            else:
-                error_msg = self._extract_error(response)
-                raise SourceError(
-                    f"HTTP {response.status_code}: {error_msg}",
-                    source=self.source_name,
-                    url=url,
-                    status_code=response.status_code,
-                )
-        except (NotFoundError, SourceError):
-            raise
-        except httpx.TimeoutException as exc:
-            raise TimeoutError(
-                f"POST request timed out for {self.source_name}"
-            ) from exc
+        response = await self._request_with_retry(
+            "POST", url, params=params, form_data=form_data,
+        )
+        return self._parse_response(response)
 
     def _parse_response(self, response: httpx.Response) -> Any:
         """Parse HTTP response to Python object.

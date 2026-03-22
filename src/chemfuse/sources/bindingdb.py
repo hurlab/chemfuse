@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import logging
 import re
-import xml.etree.ElementTree as ET
 from typing import Any
+
+import defusedxml.ElementTree as ET
 
 from chemfuse.models.bioactivity import BindingMeasurement
 from chemfuse.models.compound import Compound

@@ -29,6 +29,7 @@ dependencies = [
     "click>=8.0",
     "rich>=13.0",
     "pandas>=2.1",
+    "defusedxml>=0.7",
 ]
 
 [project.optional-dependencies]

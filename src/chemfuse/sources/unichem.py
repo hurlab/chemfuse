@@ -187,4 +187,7 @@ class UniChemAdapter(SourceAdapter):
         return result
 
 
-__all__ = ["UniChemAdapter", "SOURCE_IDS", "SOURCE_NAMES"]
+# backward compatibility alias
+UniChemSource = UniChemAdapter
+
+__all__ = ["UniChemAdapter", "UniChemSource", "SOURCE_IDS", "SOURCE_NAMES"]

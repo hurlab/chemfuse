@@ -15,8 +15,6 @@ Key functions:
     egan_filter: Egan absorption filter.
     muegge_filter: Muegge drug-likeness filter.
     check_drug_likeness: Combined evaluation with all five filters.
-    compute_qed: QED (Quantitative Estimate of Drug-likeness) score.
-    screen_pains: PAINS substructure screening.
 """
 
 from chemfuse.compute.descriptors import (

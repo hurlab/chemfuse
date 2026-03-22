@@ -49,8 +49,10 @@ def web_cmd(port: int, host: str, no_browser: bool) -> None:
     except ImportError as exc:
         raise OptionalDependencyError("streamlit", extra="web") from exc
 
-    # Locate app.py
-    app_file = Path(__file__).parent.parent.parent / "web" / "app.py"
+    # Locate app.py via importlib for reliable path resolution
+    import importlib.util
+    spec = importlib.util.find_spec("chemfuse.web.app")
+    app_file = Path(spec.origin) if spec and spec.origin else Path(__file__).parent.parent.parent / "web" / "app.py"
 
     # Build the streamlit run command
     cmd = [

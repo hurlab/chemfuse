@@ -4,10 +4,29 @@ from __future__ import annotations
 
 import json
 import sys
+from pathlib import Path
 
 import click
 
 from chemfuse.core.exceptions import NotFoundError, SourceError
+
+
+def _validate_output_path(path: Path) -> Path:
+    """Validate output path is safe.
+
+    Args:
+        path: Output file path.
+
+    Returns:
+        Resolved path.
+
+    Raises:
+        click.BadParameter: If the path contains traversal components.
+    """
+    resolved = path.resolve()
+    if ".." in path.parts:
+        raise click.BadParameter(f"Path traversal not allowed: {path}")
+    return resolved
 
 
 @click.command("search")
@@ -117,6 +136,7 @@ def search_cmd(
 
     # Save to file if requested
     if output:
+        _validate_output_path(Path(output))
         ext = output.rsplit(".", 1)[-1].lower() if "." in output else "csv"
         if ext == "json":
             collection.to_json(output)

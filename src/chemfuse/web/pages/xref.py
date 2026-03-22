@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from html import escape
 from typing import Any
 
 import pandas as pd
 import streamlit as st
+
+from chemfuse.web._utils import _run_async
 
 # Database URL templates for clickable links
 _DB_URLS: dict[str, str] = {
@@ -49,9 +52,19 @@ def render() -> None:
 
     if lookup_clicked and identifier.strip():
         with st.spinner("Resolving cross-references..."):
-            result = _lookup_xref(identifier.strip())
+            lookup_return = _lookup_xref(identifier.strip())
+        # Handle both tuple return (result, error) and None (e.g. from mocks)
+        if isinstance(lookup_return, tuple):
+            result, error = lookup_return
+        else:
+            result, error = lookup_return, None
+        if error:
+            st.error(error)
         if result:
-            st.session_state["xref_result"] = result
+            st.session_state["xref_result"] = {
+                "query": identifier.strip(),
+                "mappings": result,
+            }
         else:
             st.warning("No cross-references found for this identifier.")
             st.session_state["xref_result"] = None
@@ -59,39 +72,41 @@ def render() -> None:
     # Display result
     xref_data = st.session_state.get("xref_result")
     if xref_data:
-        _display_xref_table(identifier.strip(), xref_data)
+        # Support both new format {"query": ..., "mappings": ...}
+        # and legacy format {db_key: db_id, ...}
+        if "mappings" in xref_data:
+            stored_query = xref_data.get("query", identifier.strip())
+            _display_xref_table(stored_query, xref_data["mappings"])
+        else:
+            # Legacy format: the dict itself is the mappings
+            _display_xref_table(identifier.strip(), xref_data)
 
 
 @st.cache_data(ttl=600, show_spinner=False)
-def _lookup_xref(identifier: str) -> dict[str, str] | None:
-    """Look up cross-references for an identifier via UniChem."""
-    import asyncio
+def _lookup_xref(identifier: str) -> tuple[dict[str, str] | None, str | None]:
+    """Look up cross-references for an identifier via UniChem.
 
+    Returns:
+        A tuple of (result_dict_or_None, error_message_or_None).
+    """
     async def _run() -> dict[str, str] | None:
-        try:
-            from chemfuse.sources.unichem import UniChemSource
-            src = UniChemSource()
-            async with src:
-                # Determine identifier type
-                if identifier.isdigit():
-                    # PubChem CID
-                    return await src.map_identifiers(identifier, "pubchem")
-                elif identifier.upper().startswith("CHEMBL"):
-                    return await src.map_identifiers(identifier, "chembl")
-                elif len(identifier) == 27 and "-" in identifier:
-                    # InChIKey format: XXXXX-XXXXX-X
-                    return await src.cross_reference(identifier)
-                else:
-                    # Try as SMILES or name via PubChem first
-                    return await _resolve_via_pubchem(identifier, src)
-        except Exception as exc:
-            st.error(f"Cross-reference lookup failed: {exc}")
-            return None
+        from chemfuse.sources.unichem import UniChemSource
+        src = UniChemSource()
+        async with src:
+            if identifier.isdigit():
+                return await src.map_identifiers(identifier, "pubchem")
+            elif identifier.upper().startswith("CHEMBL"):
+                return await src.map_identifiers(identifier, "chembl")
+            elif len(identifier) == 27 and "-" in identifier:
+                return await src.cross_reference(identifier)
+            else:
+                return await _resolve_via_pubchem(identifier, src)
 
-    loop = asyncio.new_event_loop()
-    result = loop.run_until_complete(_run())
-    loop.close()
-    return result
+    try:
+        result = _run_async(_run())
+        return result, None
+    except Exception as exc:
+        return None, f"Cross-reference lookup failed: {exc}"
 
 
 async def _resolve_via_pubchem(identifier: str, unichem_src: Any) -> dict[str, str] | None:
@@ -100,7 +115,6 @@ async def _resolve_via_pubchem(identifier: str, unichem_src: Any) -> dict[str, s
         from chemfuse.sources.pubchem import PubChemSource
         pubchem_src = PubChemSource()
         async with pubchem_src:
-            # Try name search
             compounds = await pubchem_src.search(identifier, query_type="name")
             if not compounds:
                 compounds = await pubchem_src.search(identifier, query_type="smiles")
@@ -128,10 +142,13 @@ def _display_xref_table(query: str, mappings: dict[str, str]) -> None:
         label = _DB_LABELS.get(db_key, db_key.capitalize())
         url_template = _DB_URLS.get(db_key)
         if url_template:
+            # HTML-escape all dynamic values before embedding in HTML
+            safe_id = escape(str(db_id))
             link = url_template.format(id=db_id)
-            link_html = f'<a href="{link}" target="_blank">{db_id}</a>'
+            safe_url = escape(link)
+            link_html = f'<a href="{safe_url}" target="_blank">{safe_id}</a>'
         else:
-            link_html = db_id
+            link_html = escape(str(db_id))
         rows.append({
             "Database": label,
             "Identifier": db_id,

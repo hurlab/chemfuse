@@ -283,6 +283,13 @@ def ghose_filter(
     mr = props["molar_refractivity"]
     total_atoms = props["total_atoms"]
 
+    if mw is None and logp is None and mr is None and total_atoms is None:
+        return FilterResult(
+            pass_filter=False,
+            violations=["Insufficient molecular data"],
+            details={},
+        )
+
     violations: list[str] = []
 
     if mw is not None and (mw < 160 or mw > 480):
@@ -333,6 +340,13 @@ def egan_filter(
     props = _build_props(smiles, None, logp, None, None, tpsa, None)
     logp = props["logp"]
     tpsa = props["tpsa"]
+
+    if logp is None and tpsa is None:
+        return FilterResult(
+            pass_filter=False,
+            violations=["Insufficient molecular data"],
+            details={},
+        )
 
     violations: list[str] = []
 
@@ -404,6 +418,16 @@ def muegge_filter(
     ring_count = props["ring_count"]
     heteroatom_count = props["heteroatom_count"]
     carbon_count = props["carbon_count"]
+
+    if all(
+        v is None
+        for v in [mw, logp, tpsa, hbd, hba, rotatable_bonds, ring_count, heteroatom_count, carbon_count]
+    ):
+        return FilterResult(
+            pass_filter=False,
+            violations=["Insufficient molecular data"],
+            details={},
+        )
 
     violations: list[str] = []
 

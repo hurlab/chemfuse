@@ -8,6 +8,21 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
+from chemfuse.web._utils import _run_async
+
+# Maximum number of compounds to store in session to prevent unbounded growth
+MAX_SESSION_COMPOUNDS = 100
+
+# Search type labels map to actual query_type values supported by adapters
+_SEARCH_TYPE_OPTIONS = ["name", "smiles", "cid", "formula", "inchi"]
+_SEARCH_TYPE_LABELS = {
+    "name": "Name",
+    "smiles": "SMILES",
+    "cid": "CID",
+    "formula": "Formula",
+    "inchi": "InChI",
+}
+
 
 def render() -> None:
     """Render the Search page."""
@@ -27,7 +42,8 @@ def render() -> None:
     with col_type:
         search_type = st.selectbox(
             "Search type",
-            ["name", "smiles", "similarity", "substructure"],
+            _SEARCH_TYPE_OPTIONS,
+            format_func=lambda k: _SEARCH_TYPE_LABELS.get(k, k),
             key="search_type_select",
         )
 
@@ -62,7 +78,12 @@ def render() -> None:
 def _execute_search(query: str, search_type: str, sources: list[str]) -> None:
     """Execute search and store results in session_state."""
     with st.spinner(f"Searching for '{query}'..."):
-        results = _fetch_results(query, search_type, sources)
+        # Convert list to tuple for @st.cache_data hashability (C7)
+        results, warnings = _fetch_results(query, search_type, tuple(sources))
+
+    # Display any warnings/errors from the cached function (C6)
+    for w in warnings:
+        st.warning(w)
 
     if not results:
         st.warning("No results found.")
@@ -76,19 +97,32 @@ def _execute_search(query: str, search_type: str, sources: list[str]) -> None:
     new_compounds = [r for r in results if r.get("smiles", "") not in existing_smiles]
     if new_compounds:
         compounds.extend(new_compounds[:20])
+        # Cap session_compounds to prevent unbounded growth (C12)
+        if len(compounds) > MAX_SESSION_COMPOUNDS:
+            compounds = compounds[-MAX_SESSION_COMPOUNDS:]
         st.session_state["session_compounds"] = compounds
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def _fetch_results(query: str, search_type: str, sources: tuple[str, ...]) -> list[dict[str, Any]]:
+def _fetch_results(
+    query: str,
+    search_type: str,
+    sources: tuple[str, ...],
+) -> tuple[list[dict[str, Any]], list[str]]:
     """Fetch compound search results (cached, TTL=5 min).
 
-    Uses synchronous HTTP via httpx to avoid Streamlit's async limitations.
-    Falls back gracefully if sources are unavailable.
-    """
-    import asyncio
+    No st.* calls are made inside this function to comply with Streamlit's
+    caching requirements (C6).
 
-    results: list[dict[str, Any]] = []
+    Args:
+        query: The search query string.
+        search_type: One of the supported query types (name, smiles, cid, ...).
+        sources: Tuple of source names (e.g. ('pubchem', 'chembl')).
+
+    Returns:
+        A tuple of (results_list, warnings_list).
+    """
+    warnings: list[str] = []
 
     async def _run() -> list[dict[str, Any]]:
         collected: list[dict[str, Any]] = []
@@ -107,17 +141,17 @@ def _fetch_results(query: str, search_type: str, sources: tuple[str, ...]) -> li
                         compounds = await src.search(query, query_type=search_type)
                     collected.extend(_compound_to_dict(c) for c in compounds)
             except Exception as exc:
-                st.warning(f"Source '{source_name}' error: {exc}")
+                # Collect warnings instead of calling st.warning (C6)
+                warnings.append(f"Source '{source_name}' error: {exc}")
         return collected
 
     try:
-        loop = asyncio.new_event_loop()
-        results = loop.run_until_complete(_run())
-        loop.close()
+        results = _run_async(_run())
     except Exception as exc:
-        st.error(f"Search failed: {exc}")
+        warnings.append(f"Search failed: {exc}")
+        results = []
 
-    return results
+    return results, warnings
 
 
 def _compound_to_dict(compound: Any) -> dict[str, Any]:

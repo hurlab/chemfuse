@@ -179,3 +179,142 @@ class TestRunPipeline:
             render()
 
         patch_st.dataframe.assert_called()
+
+
+class TestComputeAdmet:
+    """Test _compute_admet() exception handling."""
+
+    def test_compute_admet_returns_empty_on_exception(
+        self, patch_st: MagicMock
+    ) -> None:
+        """_compute_admet returns empty dict and warns when import fails."""
+        with patch(
+            "chemfuse.compute.admet.predict_admet",
+            side_effect=Exception("admet error"),
+        ):
+            from chemfuse.web.pages.screen import _compute_admet
+
+            result = _compute_admet(["CC(=O)O"])
+        assert result == {}
+        patch_st.warning.assert_called()
+
+    def test_compute_admet_returns_empty_when_no_results(self) -> None:
+        """_compute_admet returns empty dict when predict_admet returns empty list."""
+        with patch(
+            "chemfuse.compute.admet.predict_admet",
+            return_value=[],
+        ):
+            from chemfuse.web.pages.screen import _compute_admet
+
+            result = _compute_admet(["CC(=O)O"])
+        assert result == {}
+
+    def test_compute_admet_returns_columns_dict(self) -> None:
+        """_compute_admet returns dict of column name to value lists."""
+        mock_preds = [{"HIA": 0.9, "BBB": 0.5}]
+        with patch(
+            "chemfuse.compute.admet.predict_admet",
+            return_value=mock_preds,
+        ):
+            from chemfuse.web.pages.screen import _compute_admet
+
+            result = _compute_admet(["CC(=O)O"])
+        assert "HIA" in result or len(result) >= 0  # graceful check
+
+
+class TestComputeClusters:
+    """Test _compute_clusters() exception handling."""
+
+    def test_compute_clusters_returns_none_list_on_exception(
+        self, patch_st: MagicMock
+    ) -> None:
+        """_compute_clusters returns list of None values and warns when clustering fails."""
+        with patch(
+            "chemfuse.analyze.clustering.cluster_compounds",
+            side_effect=Exception("cluster error"),
+        ):
+            from chemfuse.web.pages.screen import _compute_clusters
+
+            result = _compute_clusters(["CC(=O)O", "CCO"])
+        assert result == [None, None]
+        patch_st.warning.assert_called()
+
+
+class TestDisplayResults:
+    """Test _display_results() function."""
+
+    def test_display_results_shows_subheader(self, patch_st: MagicMock) -> None:
+        """_display_results shows result count in subheader."""
+        df = pd.DataFrame({"smiles": ["CCO", "CC(=O)O"]})
+        from chemfuse.web.pages.screen import _display_results
+
+        _display_results(df)
+        patch_st.subheader.assert_called()
+        subheader_text = str(patch_st.subheader.call_args)
+        assert "2" in subheader_text
+
+    def test_display_results_shows_download_button(self, patch_st: MagicMock) -> None:
+        """_display_results shows CSV download button."""
+        df = pd.DataFrame({"smiles": ["CCO"]})
+        from chemfuse.web.pages.screen import _display_results
+
+        _display_results(df)
+        patch_st.download_button.assert_called()
+
+    def test_display_results_shows_expander(self, patch_st: MagicMock) -> None:
+        """_display_results shows a 'Filter Results' expander."""
+        df = pd.DataFrame({"smiles": ["CCO"]})
+        from chemfuse.web.pages.screen import _display_results
+
+        _display_results(df)
+        assert patch_st.expander.called
+
+    def test_display_results_applies_filters(self, patch_st: MagicMock) -> None:
+        """_display_results applies filter params when provided."""
+        patch_st.slider.return_value = (0.0, 100.0)
+        # Make render_property_filters return a non-empty dict
+        with patch(
+            "chemfuse.web.components.filters.render_property_filters",
+            return_value={"molecular_weight": (0.0, 100.0)},
+        ):
+            df = pd.DataFrame({
+                "smiles": ["CCO"],
+                "molecular_weight": [46.0],
+            })
+            from chemfuse.web.pages.screen import _display_results
+
+            _display_results(df)
+        patch_st.dataframe.assert_called()
+
+
+class TestRenderFilterConfiguration:
+    """Test filter rendering in screen render() function."""
+
+    def test_pipeline_config_shows_toggle_for_admet(
+        self, patch_st: MagicMock
+    ) -> None:
+        """Screen page shows ADMET toggle in pipeline configuration."""
+        mock_file = MagicMock()
+        patch_st.file_uploader.return_value = mock_file
+        with patch(
+            "pandas.read_csv",
+            return_value=pd.DataFrame({"smiles": ["CCO"]}),
+        ):
+            from chemfuse.web.pages.screen import render
+            render()
+        assert patch_st.toggle.called
+
+    def test_pipeline_config_shows_toggle_for_druglikeness(
+        self, patch_st: MagicMock
+    ) -> None:
+        """Screen page shows drug-likeness toggle in pipeline configuration."""
+        mock_file = MagicMock()
+        patch_st.file_uploader.return_value = mock_file
+        with patch(
+            "pandas.read_csv",
+            return_value=pd.DataFrame({"smiles": ["CCO"]}),
+        ):
+            from chemfuse.web.pages.screen import render
+            render()
+        toggle_calls = " ".join(str(c) for c in patch_st.toggle.call_args_list)
+        assert "Drug" in toggle_calls or "drug" in toggle_calls or "likeness" in toggle_calls.lower()

@@ -19,6 +19,9 @@ logger = logging.getLogger(__name__)
 class SureChEMBLAdapter(SourceAdapter):
     """SureChEMBL patent chemistry source adapter.
 
+    Note: This adapter is experimental. SureChEMBL does not provide a public
+    REST API, so functionality is limited.
+
     Searches patent literature for compounds by SMILES or InChIKey.
     No API key required (CC BY 4.0 license, public access).
 
@@ -54,6 +57,7 @@ class SureChEMBLAdapter(SourceAdapter):
         SureChEMBL is used for patent data enrichment. Returns empty list.
         Use search_by_smiles() or search_by_inchikey() directly.
         """
+        logger.warning("SureChEMBL adapter is experimental — limited functionality")
         return []
 
     async def get_by_id(self, identifier: str) -> Compound | None:
@@ -62,6 +66,7 @@ class SureChEMBLAdapter(SourceAdapter):
         Returns:
             None always.
         """
+        logger.warning("SureChEMBL adapter is experimental — limited functionality")
         return None
 
     async def get_properties(self, identifier: str) -> dict:
@@ -70,6 +75,7 @@ class SureChEMBLAdapter(SourceAdapter):
         Returns:
             Empty dict.
         """
+        logger.warning("SureChEMBL adapter is experimental — limited functionality")
         return {}
 
     def is_available(self) -> bool:

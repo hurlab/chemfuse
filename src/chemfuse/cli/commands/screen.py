@@ -18,6 +18,24 @@ from chemfuse.models.collection import CompoundCollection
 logger = logging.getLogger(__name__)
 
 
+def _validate_output_path(path: Path) -> Path:
+    """Validate output path is safe.
+
+    Args:
+        path: Output file path.
+
+    Returns:
+        Resolved path.
+
+    Raises:
+        click.BadParameter: If the path contains traversal components.
+    """
+    resolved = path.resolve()
+    if ".." in path.parts:
+        raise click.BadParameter(f"Path traversal not allowed: {path}")
+    return resolved
+
+
 @click.command("screen")
 @click.argument("input_file", type=click.Path(exists=True, readable=True))
 @click.option(
@@ -212,6 +230,7 @@ def screen_cmd(
     # Step 7: Export
     # ------------------------------------------------------------------
     if output:
+        _validate_output_path(Path(output))
         ext = Path(output).suffix.lower().lstrip(".")
         if ext == "json":
             collection.to_json(output)

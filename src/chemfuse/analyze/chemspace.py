@@ -13,21 +13,11 @@ from typing import Any
 
 import numpy as np
 
+from chemfuse.compute.fingerprints import RDKIT_AVAILABLE as _RDKIT_AVAILABLE
+from chemfuse.compute.fingerprints import fp_matrix as _shared_fp_matrix
 from chemfuse.core.exceptions import OptionalDependencyError
 
 logger = logging.getLogger(__name__)
-
-Chem = None
-DataStructs = None
-AllChem = None
-MACCSkeys = None
-try:
-    from rdkit import Chem, DataStructs  # type: ignore[import-not-found]
-    from rdkit.Chem import AllChem, MACCSkeys  # type: ignore[import-not-found]
-
-    _RDKIT_AVAILABLE = True
-except ImportError:
-    _RDKIT_AVAILABLE = False
 
 PCA = None
 TSNE = None
@@ -60,28 +50,12 @@ def _require_sklearn() -> None:
 
 
 def _fp_matrix(smiles_list: list[str], fp_type: str = "morgan", n_bits: int = 2048) -> np.ndarray:
-    rows = []
-    for smi in smiles_list:
-        try:
-            mol = Chem.MolFromSmiles(smi)
-            if mol is None:
-                rows.append(np.zeros(n_bits, dtype=np.uint8))
-                continue
-            if fp_type == "maccs":
-                fp = MACCSkeys.GenMACCSKeys(mol)
-                arr = np.zeros(167, dtype=np.uint8)
-            elif fp_type == "rdkit":
-                fp = Chem.RDKFingerprint(mol)
-                arr = np.zeros(n_bits, dtype=np.uint8)
-            else:
-                fp = AllChem.GetMorganFingerprintAsBitVect(mol, radius=2, nBits=n_bits)
-                arr = np.zeros(n_bits, dtype=np.uint8)
-            DataStructs.ConvertToNumpyArray(fp, arr)
-            rows.append(arr)
-        except Exception as exc:
-            logger.warning("_fp_matrix: skipping %r: %s", smi, exc)
-            rows.append(np.zeros(n_bits, dtype=np.uint8))
-    return np.array(rows, dtype=float)
+    """Build a numpy bit-vector matrix from SMILES.
+
+    Delegates to the shared fp_matrix() in chemfuse.compute.fingerprints
+    which correctly handles MACCS (167-bit) and other fingerprint dimensions.
+    """
+    return _shared_fp_matrix(smiles_list, fp_type=fp_type, n_bits=n_bits)
 
 
 def reduce_dimensions(

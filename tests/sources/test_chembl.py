@@ -6,7 +6,6 @@ import pytest
 import respx
 from httpx import Response
 
-from chemfuse.core.exceptions import NotFoundError
 from chemfuse.models.bioactivity import Bioactivity
 from chemfuse.sources.chembl import ChEMBLAdapter
 
@@ -178,14 +177,14 @@ class TestChEMBLSearch:
 
     @pytest.mark.asyncio
     @respx.mock
-    async def test_search_not_found_raises_not_found_error(self) -> None:
-        """search raises NotFoundError when get_by_id returns None."""
+    async def test_search_not_found_returns_empty_list(self) -> None:
+        """search returns empty list when compound is not found."""
         respx.get(f"{CHEMBL_BASE}/molecule/CHEMBL99999").mock(
             return_value=Response(404, json={"error": "Not found"})
         )
         adapter = ChEMBLAdapter()
-        with pytest.raises(NotFoundError):
-            await adapter.search("CHEMBL99999", query_type="identifier")
+        result = await adapter.search("CHEMBL99999", query_type="identifier")
+        assert result == []
 
 
 class TestChEMBLGetById:

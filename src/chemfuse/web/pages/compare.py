@@ -97,10 +97,10 @@ def _render_radar_overlay(
         st.caption("Install plotly for radar chart visualization.")
         return
 
-    # Filter to properties with at least one non-None value
+    # Filter to properties with at least one non-None value (allow negative values like XLogP)
     valid_props = {
         k: v for k, v in chart_data.items()
-        if any(x is not None and x > 0 for x in v)
+        if any(x is not None for x in v)
     }
     if len(valid_props) < 3:
         return

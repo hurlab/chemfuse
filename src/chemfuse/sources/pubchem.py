@@ -80,7 +80,9 @@ class PubChemAdapter(SourceAdapter):
         if qt in ("cid", "identifier") and str(query).isdigit():
             return await self._search_by_cid(int(query))
         elif qt == "cid":
-            return await self._search_by_cid(int(query))
+            raise ValueError(
+                f"Invalid CID: {query!r} is not a numeric compound identifier"
+            )
         elif qt == "smiles":
             return await self._search_by_smiles(query)
         elif qt == "formula":
@@ -222,8 +224,8 @@ class PubChemAdapter(SourceAdapter):
             if compounds and compounds[0].cid:
                 await self._enrich_synonyms(compounds)
             return compounds
-        except NotFoundError as exc:
-            raise NotFoundError(f"Compound not found: {name}", identifier=name) from exc
+        except NotFoundError:
+            return []
 
     async def _search_by_cid(self, cid: int) -> list[Compound]:
         """Search by CID."""
@@ -234,8 +236,8 @@ class PubChemAdapter(SourceAdapter):
             if compounds:
                 await self._enrich_synonyms(compounds)
             return compounds
-        except NotFoundError as exc:
-            raise NotFoundError(f"CID not found: {cid}", identifier=str(cid)) from exc
+        except NotFoundError:
+            return []
 
     async def _search_by_smiles(self, smiles: str) -> list[Compound]:
         """Search by SMILES (exact match)."""
@@ -244,16 +246,16 @@ class PubChemAdapter(SourceAdapter):
         try:
             data = await self._http.get(path)
             return self._parse_property_table(data)
-        except NotFoundError as exc:
-            raise NotFoundError(f"SMILES not found: {smiles}", identifier=smiles) from exc
+        except NotFoundError:
+            return []
 
     async def _search_by_formula(self, formula: str) -> list[Compound]:
         """Search by molecular formula (returns multiple results)."""
-        path = f"compound/fastformula/{formula}/cids/JSON"
+        path = f"compound/fastformula/{quote(formula, safe='')}/cids/JSON"
         try:
             data = await self._http.get(path, use_cache=False)
-        except NotFoundError as exc:
-            raise NotFoundError(f"Formula not found: {formula}", identifier=formula) from exc
+        except NotFoundError:
+            return []
 
         cids = await self._resolve_list_key_or_ids(data)
         if not cids:
@@ -267,8 +269,8 @@ class PubChemAdapter(SourceAdapter):
         try:
             data = await self._http.post_form(path, form_data={"inchi": inchi})
             return self._parse_property_table(data)
-        except NotFoundError as exc:
-            raise NotFoundError(f"InChI not found: {inchi}", identifier=inchi) from exc
+        except NotFoundError:
+            return []
 
     async def _fetch_compounds_by_cids(self, cids: list[int]) -> list[Compound]:
         """Fetch compound data for a list of CIDs."""

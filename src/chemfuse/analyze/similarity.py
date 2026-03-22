@@ -96,7 +96,7 @@ def bulk_tanimoto(
             sim = float(DataStructs.TanimotoSimilarity(qfp, tfp))
         except (ValueError, Exception) as exc:
             logger.warning("bulk_tanimoto: skipping %r: %s", smi, exc)
-            sim = 0.0
+            sim = float("nan")
         results.append((smi, sim))
     results.sort(key=lambda x: x[1], reverse=True)
     return results
@@ -132,7 +132,7 @@ def tanimoto_matrix(
     for i in range(n):
         for j in range(i + 1, n):
             if fps[i] is None or fps[j] is None:
-                sim = 0.0
+                sim = float("nan")
             else:
                 sim = float(DataStructs.TanimotoSimilarity(fps[i], fps[j]))
             matrix[i, j] = sim
