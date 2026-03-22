@@ -29,6 +29,8 @@ class CompoundProperties(BaseModel):
     heavy_atom_count: int | None = None
     aromatic_rings: int | None = None
     complexity: float | None = None
+    sa_score: float | None = None  # Synthetic accessibility (1=easy, 10=hard)
+    fsp3: float | None = None  # Fraction sp3 carbons (0–1)
 
 
 class Compound(BaseModel):
@@ -60,6 +62,13 @@ class Compound(BaseModel):
     binding_data: list[Any] = Field(default_factory=list)   # list[BindingMeasurement]
     target_associations: list[Any] = Field(default_factory=list)  # list[TargetAssociation]
     patents: list[Any] = Field(default_factory=list)              # list[Patent]
+
+    # Scaffold fields (populated by analyze.scaffolds functions or on demand)
+    scaffold: str | None = None
+    generic_scaffold: str | None = None
+
+    # Standardized form (populated by standardize())
+    canonical_smiles: str | None = None  # Standardized SMILES (salt-stripped, tautomer-canonicalized)
 
     # Computed fields (populated by compute methods)
     descriptors: dict[str, float] = Field(default_factory=dict)
@@ -347,6 +356,44 @@ class Compound(BaseModel):
 
         return None
 
+    def best_activity(
+        self,
+        target: str | None = None,
+        activity_type: str = "IC50",
+    ) -> float | None:
+        """Return the best (lowest) normalized activity value in nM.
+
+        Filters bioactivities by target name (if provided) and activity type,
+        then returns the minimum value_nm across matching records.
+
+        Args:
+            target: Optional target name substring to filter by (case-insensitive).
+            activity_type: Activity type to filter by (default "IC50").
+
+        Returns:
+            Minimum value_nm in nM, or None if no matching normalized records.
+        """
+        candidates: list[float] = []
+        for ba in self.bioactivities:
+            # ba may be a dict (from model_dump) or a Bioactivity instance
+            if isinstance(ba, dict):
+                ba_type = ba.get("activity_type", "")
+                ba_target = ba.get("target_name", "")
+                ba_value_nm = ba.get("value_nm")
+            else:
+                ba_type = getattr(ba, "activity_type", "")
+                ba_target = getattr(ba, "target_name", "")
+                ba_value_nm = getattr(ba, "value_nm", None)
+
+            if ba_type != activity_type:
+                continue
+            if target is not None and target.lower() not in ba_target.lower():
+                continue
+            if ba_value_nm is not None:
+                candidates.append(ba_value_nm)
+
+        return min(candidates) if candidates else None
+
     # ------------------------------------------------------------------
     # Computation methods (SPEC-CF-002)
     # ------------------------------------------------------------------
@@ -431,6 +478,21 @@ class Compound(BaseModel):
         result = _check(props_norm, smiles=self.smiles or None)
         self.druglikeness = result
         return result
+
+    def to_mol(self) -> Any:
+        """Convert to RDKit Mol object.
+
+        Returns:
+            rdkit.Chem.Mol for the compound's SMILES, or None if RDKit is
+            unavailable or the SMILES is absent/invalid.
+        """
+        try:
+            from rdkit import Chem
+        except ImportError:
+            return None
+        if not self.smiles:
+            return None
+        return Chem.MolFromSmiles(self.smiles)
 
     # ------------------------------------------------------------------
 

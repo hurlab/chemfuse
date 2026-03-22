@@ -8,7 +8,9 @@ from chemfuse.models.bioactivity import (
     RECOGNIZED_ACTIVITY_TYPES,
     BindingMeasurement,
     Bioactivity,
+    normalize_to_nm,
 )
+from chemfuse.models.compound import Compound
 
 # --- Bioactivity tests ---
 
@@ -103,6 +105,231 @@ class TestBioactivity:
         """RECOGNIZED_ACTIVITY_TYPES contains the expected values."""
         expected = {"IC50", "Ki", "Kd", "EC50", "ED50", "GI50", "other"}
         assert expected == RECOGNIZED_ACTIVITY_TYPES
+
+
+class TestNormalizeToNm:
+    """Tests for the normalize_to_nm helper function."""
+
+    def test_nm_stays_same(self) -> None:
+        """100 nM stays 100."""
+        assert normalize_to_nm(100.0, "nM") == pytest.approx(100.0)
+
+    def test_um_to_nm(self) -> None:
+        """0.1 uM becomes 100 nM."""
+        assert normalize_to_nm(0.1, "uM") == pytest.approx(100.0)
+
+    def test_m_to_nm(self) -> None:
+        """1e-7 M becomes 100 nM."""
+        assert normalize_to_nm(1e-7, "M") == pytest.approx(100.0)
+
+    def test_mm_to_nm(self) -> None:
+        """0.0001 mM becomes 100 nM."""
+        assert normalize_to_nm(0.0001, "mM") == pytest.approx(100.0)
+
+    def test_pm_to_nm(self) -> None:
+        """100000 pM becomes 100 nM."""
+        assert normalize_to_nm(100000.0, "pM") == pytest.approx(100.0)
+
+    def test_micromolar_string(self) -> None:
+        """'micromolar' is treated as uM."""
+        assert normalize_to_nm(0.1, "micromolar") == pytest.approx(100.0)
+
+    def test_nanomolar_string(self) -> None:
+        """'nanomolar' is treated as nM."""
+        assert normalize_to_nm(100.0, "nanomolar") == pytest.approx(100.0)
+
+    def test_none_units_returns_none(self) -> None:
+        """None units returns None."""
+        assert normalize_to_nm(100.0, None) is None
+
+    def test_none_value_returns_none(self) -> None:
+        """None value returns None."""
+        assert normalize_to_nm(None, "nM") is None
+
+    def test_unrecognized_units_returns_none(self) -> None:
+        """Unrecognized units returns None."""
+        assert normalize_to_nm(100.0, "ug/mL") is None
+
+    def test_case_insensitive_units(self) -> None:
+        """Unit matching is case-insensitive."""
+        assert normalize_to_nm(0.1, "UM") == pytest.approx(100.0)
+        assert normalize_to_nm(0.1, "UМ") is None  # non-ASCII M stays None
+
+    @pytest.mark.parametrize("value,units,expected", [
+        (100.0, "nM", 100.0),
+        (0.1, "uM", 100.0),
+        (1e-7, "M", 100.0),
+        (0.0001, "mM", 100.0),
+        (100000.0, "pM", 100.0),
+    ])
+    def test_normalize_parametrized(
+        self,
+        value: float,
+        units: str,
+        expected: float,
+    ) -> None:
+        """Parametrized unit conversion all produce 100 nM."""
+        assert normalize_to_nm(value, units) == pytest.approx(expected)
+
+
+class TestBioactivityNormalization:
+    """Tests for auto-normalization in Bioactivity model."""
+
+    def test_ic50_100nm_pic50_is_7(self) -> None:
+        """IC50 of 100 nM -> pIC50 == 7.0."""
+        ba = Bioactivity(
+            target_name="Target",
+            activity_type="IC50",
+            value=100.0,
+            units="nM",
+        )
+        assert ba.value_nm == pytest.approx(100.0)
+        assert ba.pic50 == pytest.approx(7.0)
+        assert ba.pki is None
+        assert ba.is_normalized is True
+
+    def test_ki_10nm_pki_is_8(self) -> None:
+        """Ki of 10 nM -> pKi == 8.0."""
+        ba = Bioactivity(
+            target_name="Target",
+            activity_type="Ki",
+            value=10.0,
+            units="nM",
+        )
+        assert ba.value_nm == pytest.approx(10.0)
+        assert ba.pki == pytest.approx(8.0)
+        assert ba.pic50 is None
+        assert ba.is_normalized is True
+
+    def test_ec50_does_not_set_pic50_or_pki(self) -> None:
+        """EC50 with nM units: value_nm is set but pic50 and pki are None."""
+        ba = Bioactivity(
+            target_name="Target",
+            activity_type="EC50",
+            value=100.0,
+            units="nM",
+        )
+        assert ba.value_nm == pytest.approx(100.0)
+        assert ba.pic50 is None
+        assert ba.pki is None
+
+    def test_no_units_no_normalization(self) -> None:
+        """No units means no normalization."""
+        ba = Bioactivity(
+            target_name="Target",
+            activity_type="IC50",
+            value=100.0,
+            units=None,
+        )
+        assert ba.value_nm is None
+        assert ba.pic50 is None
+        assert ba.is_normalized is False
+
+    def test_uM_ic50_normalization(self) -> None:
+        """IC50 of 0.1 uM -> value_nm == 100 nM, pIC50 == 7.0."""
+        ba = Bioactivity(
+            target_name="Target",
+            activity_type="IC50",
+            value=0.1,
+            units="uM",
+        )
+        assert ba.value_nm == pytest.approx(100.0)
+        assert ba.pic50 == pytest.approx(7.0)
+
+    def test_unrecognized_units_no_normalization(self) -> None:
+        """Unrecognized units leaves value_nm None."""
+        ba = Bioactivity(
+            target_name="Target",
+            activity_type="IC50",
+            value=1.0,
+            units="ug/mL",
+        )
+        assert ba.value_nm is None
+        assert ba.is_normalized is False
+
+    def test_new_fields_in_model_dump(self) -> None:
+        """New fields appear in model_dump output."""
+        ba = Bioactivity(target_name="T", activity_type="Ki")
+        d = ba.model_dump()
+        assert "value_nm" in d
+        assert "pic50" in d
+        assert "pki" in d
+        assert "is_normalized" in d
+
+
+class TestBestActivity:
+    """Tests for Compound.best_activity() method."""
+
+    def _make_compound_with_activities(self) -> Compound:
+        """Create a compound with mixed bioactivity data."""
+        from chemfuse.models.bioactivity import Bioactivity
+
+        c = Compound(smiles="CC(=O)Oc1ccccc1C(O)=O", name="Aspirin")
+        c.bioactivities = [
+            Bioactivity(
+                target_name="COX-1",
+                activity_type="IC50",
+                value=1670.0,
+                units="nM",
+            ),
+            Bioactivity(
+                target_name="COX-2",
+                activity_type="IC50",
+                value=278000.0,
+                units="nM",
+            ),
+            Bioactivity(
+                target_name="COX-1",
+                activity_type="Ki",
+                value=500.0,
+                units="nM",
+            ),
+        ]
+        return c
+
+    def test_best_activity_returns_lowest_nm(self) -> None:
+        """best_activity returns the lowest value_nm for the activity type."""
+        c = self._make_compound_with_activities()
+        result = c.best_activity(activity_type="IC50")
+        assert result == pytest.approx(1670.0)
+
+    def test_best_activity_filters_by_target(self) -> None:
+        """best_activity filters by target name substring."""
+        c = self._make_compound_with_activities()
+        result = c.best_activity(target="COX-2", activity_type="IC50")
+        assert result == pytest.approx(278000.0)
+
+    def test_best_activity_ki_type(self) -> None:
+        """best_activity works for Ki type."""
+        c = self._make_compound_with_activities()
+        result = c.best_activity(activity_type="Ki")
+        assert result == pytest.approx(500.0)
+
+    def test_best_activity_no_match_returns_none(self) -> None:
+        """best_activity returns None when no matching activities."""
+        c = self._make_compound_with_activities()
+        result = c.best_activity(target="p38", activity_type="IC50")
+        assert result is None
+
+    def test_best_activity_empty_bioactivities(self) -> None:
+        """best_activity returns None for compound with no bioactivities."""
+        c = Compound(smiles="C", name="methane")
+        assert c.best_activity() is None
+
+    def test_best_activity_no_normalized_values(self) -> None:
+        """best_activity returns None when no value_nm available."""
+        from chemfuse.models.bioactivity import Bioactivity
+
+        c = Compound(smiles="C", name="methane")
+        c.bioactivities = [
+            Bioactivity(
+                target_name="Target",
+                activity_type="IC50",
+                value=100.0,
+                units=None,  # No units -> no normalization
+            ),
+        ]
+        assert c.best_activity() is None
 
 
 class TestBindingMeasurement:

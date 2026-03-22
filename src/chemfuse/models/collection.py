@@ -505,6 +505,40 @@ class CompoundCollection(BaseModel):
 
         return plot_chemical_space(coords, labels=labels, colors=colors)
 
+    def filter_by_substructure(self, smarts: str) -> CompoundCollection:
+        """Return a new collection containing only compounds matching the SMARTS pattern.
+
+        Compounds with missing or invalid SMILES are excluded silently.
+
+        Args:
+            smarts: SMARTS substructure pattern to match.
+
+        Returns:
+            New CompoundCollection with only matching compounds.
+
+        Raises:
+            ValueError: If smarts is an invalid SMARTS pattern.
+            OptionalDependencyError: If RDKit is not installed.
+        """
+        from chemfuse.analyze.similarity import substructure_search
+
+        smiles_list = [c.smiles or "" for c in self.compounds]
+        # substructure_search returns False for invalid/missing SMILES
+        matches = substructure_search(smiles_list, smarts)
+
+        filtered = [
+            compound
+            for compound, matched in zip(self.compounds, matches, strict=False)
+            if matched
+        ]
+
+        return CompoundCollection(
+            compounds=filtered,
+            query=self.query,
+            sources=self.sources,
+            timestamp=self.timestamp,
+        )
+
     def detect_activity_cliffs(
         self,
         activity_col: str = "ic50",
@@ -541,3 +575,121 @@ class CompoundCollection(BaseModel):
             compound_dicts.append(d)
 
         return _detect(compound_dicts, activity_col=activity_col, sim_threshold=sim_threshold, fp_type=fp_type)
+
+    # ------------------------------------------------------------------
+    # Scaffold methods (CF-E01)
+    # ------------------------------------------------------------------
+
+    def scaffold_frequency(self) -> pd.DataFrame:
+        """Compute Murcko scaffold frequency across the collection.
+
+        Scaffolds are computed on the fly from each compound's SMILES.
+        Compounds without a valid SMILES or scaffold are excluded.
+
+        Returns:
+            DataFrame with columns ``scaffold``, ``count``, and ``percentage``,
+            sorted by count descending. Returns an empty DataFrame when the
+            collection is empty.
+
+        Raises:
+            OptionalDependencyError: If RDKit is not installed.
+        """
+        from chemfuse.analyze.scaffolds import scaffold_frequency as _scaffold_freq
+
+        smiles_list = [c.smiles for c in self.compounds if c.smiles]
+        freq_dict = _scaffold_freq(smiles_list)
+
+        if not freq_dict:
+            return pd.DataFrame(columns=["scaffold", "count", "percentage"])
+
+        total = sum(freq_dict.values())
+        records = [
+            {
+                "scaffold": scaffold,
+                "count": count,
+                "percentage": round(count / total * 100, 2) if total > 0 else 0.0,
+            }
+            for scaffold, count in freq_dict.items()
+        ]
+        return pd.DataFrame(records)
+
+    def group_by_scaffold(self) -> dict[str, CompoundCollection]:
+        """Group compounds in this collection by their Murcko scaffold.
+
+        Scaffolds are computed on the fly from each compound's SMILES.
+        Compounds whose scaffold cannot be determined are grouped under the
+        key ``""`` (empty string).
+
+        Returns:
+            Dict mapping scaffold SMILES to a :class:`CompoundCollection`
+            containing all compounds that share that scaffold.
+
+        Raises:
+            OptionalDependencyError: If RDKit is not installed.
+        """
+        from chemfuse.analyze.scaffolds import group_by_scaffold as _group
+
+        groups = _group(self.compounds)
+
+        return {
+            scaffold_smi: CompoundCollection(
+                compounds=compound_list,
+                query=self.query,
+                sources=self.sources,
+                timestamp=self.timestamp,
+            )
+            for scaffold_smi, compound_list in groups.items()
+        }
+
+    # ------------------------------------------------------------------
+    # Diversity methods (CF-E06)
+    # ------------------------------------------------------------------
+
+    def pick_diverse(
+        self,
+        n: int,
+        fp_type: str = "morgan",
+    ) -> CompoundCollection:
+        """Select n maximally diverse compounds using the MaxMin algorithm.
+
+        Args:
+            n: Number of compounds to select.
+            fp_type: Fingerprint type ('morgan', 'maccs', 'rdkit').
+
+        Returns:
+            New CompoundCollection containing the n most diverse compounds.
+            If n >= len(self), returns a copy of the full collection.
+
+        Raises:
+            OptionalDependencyError: If RDKit is not installed.
+        """
+        from chemfuse.analyze.diversity import maxmin_pick as _maxmin_pick
+
+        smiles_list = [c.smiles or "" for c in self.compounds]
+        indices = _maxmin_pick(smiles_list, n_pick=n, fp_type=fp_type)
+        picked = [self.compounds[i] for i in indices]
+
+        return CompoundCollection(
+            compounds=picked,
+            query=self.query,
+            sources=self.sources,
+            timestamp=self.timestamp,
+        )
+
+    def diversity_score(self, fp_type: str = "morgan") -> float:
+        """Compute mean pairwise Tanimoto distance (0=identical, ~1=diverse).
+
+        Args:
+            fp_type: Fingerprint type ('morgan', 'maccs', 'rdkit').
+
+        Returns:
+            Mean pairwise Tanimoto distance in [0.0, 1.0].
+            Returns 0.0 for collections with fewer than 2 compounds.
+
+        Raises:
+            OptionalDependencyError: If RDKit is not installed.
+        """
+        from chemfuse.analyze.diversity import diversity_score as _diversity_score
+
+        smiles_list = [c.smiles for c in self.compounds if c.smiles]
+        return _diversity_score(smiles_list, fp_type=fp_type)

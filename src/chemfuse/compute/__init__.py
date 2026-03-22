@@ -41,6 +41,16 @@ from chemfuse.compute.fingerprints import (
     compute_fingerprint,
     tanimoto_similarity,
 )
+from chemfuse.compute.standardization import (
+    canonical_tautomer,
+    standardize_mol,
+    strip_salts,
+)
+from chemfuse.compute.synthetic import (
+    fraction_sp3,
+    np_likeness,
+    synthetic_accessibility,
+)
 
 __all__ = [
     # Descriptors
@@ -63,4 +73,12 @@ __all__ = [
     # PAINS and QED (require RDKit + SMILES)
     "pains_filter",
     "qed_score",
+    # Standardization (require RDKit)
+    "standardize_mol",
+    "strip_salts",
+    "canonical_tautomer",
+    # Synthetic accessibility and related scores (require RDKit)
+    "synthetic_accessibility",
+    "fraction_sp3",
+    "np_likeness",
 ]

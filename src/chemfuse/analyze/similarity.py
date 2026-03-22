@@ -159,3 +159,61 @@ def find_nearest_neighbors(
     """
     ranked = bulk_tanimoto(query, targets, fp_type=fp_type)
     return ranked[:n]
+
+
+# @MX:ANCHOR: Public API for SMARTS-based substructure searching
+# @MX:REASON: Called by CompoundCollection.filter_by_substructure and external users
+def substructure_search(smiles_list: list[str], smarts: str) -> list[bool]:
+    """Check which SMILES match a SMARTS substructure pattern.
+
+    Args:
+        smiles_list: List of SMILES strings to search.
+        smarts: SMARTS pattern to match.
+
+    Returns:
+        List of booleans, True if the compound matches the pattern.
+
+    Raises:
+        ValueError: If smarts is invalid or cannot be parsed.
+        OptionalDependencyError: If RDKit is not installed.
+    """
+    _require_rdkit()
+    pattern = Chem.MolFromSmarts(smarts)
+    if pattern is None:
+        raise ValueError(f"Invalid SMARTS pattern: {smarts!r}")
+
+    results: list[bool] = []
+    for smi in smiles_list:
+        mol = Chem.MolFromSmiles(smi)
+        if mol is None:
+            results.append(False)
+        else:
+            results.append(mol.HasSubstructMatch(pattern))
+    return results
+
+
+def substructure_match_atoms(smiles: str, smarts: str) -> list[tuple[int, ...]]:
+    """Get all matching atom index tuples for a SMARTS pattern in a molecule.
+
+    Args:
+        smiles: SMILES string of the molecule to search.
+        smarts: SMARTS pattern to match.
+
+    Returns:
+        List of tuples, each tuple contains the atom indices for one match.
+        Returns an empty list if the molecule does not match.
+
+    Raises:
+        ValueError: If smarts is invalid or smiles is invalid.
+        OptionalDependencyError: If RDKit is not installed.
+    """
+    _require_rdkit()
+    pattern = Chem.MolFromSmarts(smarts)
+    if pattern is None:
+        raise ValueError(f"Invalid SMARTS pattern: {smarts!r}")
+
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None:
+        raise ValueError(f"Invalid SMILES: {smiles!r}")
+
+    return list(mol.GetSubstructMatches(pattern))
