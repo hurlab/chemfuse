@@ -246,7 +246,8 @@ class TestCompoundCheckDrugLikeness:
         result = compound.check_drug_likeness()
         summary = result.summary()
         assert isinstance(summary, dict)
-        assert set(summary.keys()) == {"lipinski", "veber", "ghose", "egan", "muegge"}
+        core_keys = {"lipinski", "veber", "ghose", "egan", "muegge"}
+        assert core_keys.issubset(set(summary.keys()))
         for val in summary.values():
             assert isinstance(val, bool)
 

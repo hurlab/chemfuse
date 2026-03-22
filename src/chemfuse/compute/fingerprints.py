@@ -112,7 +112,7 @@ def compute_fingerprint(
         fp_type: Fingerprint type. One of 'morgan', 'maccs', 'rdkit',
             'topological_torsion', 'atom_pair'.
         radius: Radius for Morgan fingerprints (default 2 = ECFP4).
-        n_bits: Bit vector length (ignored for MACCS which is always 166-bit).
+        n_bits: Bit vector length (ignored for MACCS which is always 167-bit).
 
     Returns:
         Dictionary with keys:

@@ -34,6 +34,8 @@ def _make_mol_mock() -> MagicMock:
     mol = MagicMock()
     mol.GetNumHeavyAtoms.return_value = 13
     mol.GetAtoms.return_value = []
+    mol.HasSubstructMatch.return_value = False
+    mol.GetSubstructMatches.return_value = ()
     return mol
 
 
@@ -48,6 +50,7 @@ def _mock_descriptors(mock_desc: MagicMock, mock_rdmd: MagicMock) -> None:
     mock_rdmd.CalcNumRotatableBonds.return_value = 3
     mock_rdmd.CalcNumAromaticRings.return_value = 1
     mock_rdmd.CalcNumHBD.return_value = 1
+    mock_rdmd.CalcNumHBA.return_value = 4
 
 
 # ---------------------------------------------------------------------------

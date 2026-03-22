@@ -39,11 +39,21 @@ class TestComputeFingerprint:
         assert result is not None
         assert result["num_bits"] == 2048
 
-    def test_maccs_166_bits(self):
+    def test_maccs_167_bits(self):
+        """MACCS fingerprint has 167 bits (indices 0-166, where bit 0 is unused)."""
         from chemfuse.compute.fingerprints import compute_fingerprint
         result = compute_fingerprint(ASPIRIN_SMILES, fp_type="maccs")
         assert result is not None
-        assert result["num_bits"] == 167  # MACCS is 0-indexed, so 167 positions
+        assert result["num_bits"] == 167  # RDKit MACCS keys: 167-bit vector (0-indexed)
+
+    def test_maccs_docstring_says_167_bit(self):
+        """The compute_fingerprint docstring correctly documents MACCS as 167-bit."""
+        from chemfuse.compute import fingerprints
+        doc = fingerprints.compute_fingerprint.__doc__
+        assert doc is not None
+        # Must not contain the incorrect "166-bit" wording
+        assert "166-bit" not in doc
+        assert "167-bit" in doc
 
     def test_custom_radius(self):
         from chemfuse.compute.fingerprints import compute_fingerprint

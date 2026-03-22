@@ -14,7 +14,9 @@ Key functions:
     ghose_filter: Ghose drug-likeness filter.
     egan_filter: Egan absorption filter.
     muegge_filter: Muegge drug-likeness filter.
-    check_drug_likeness: Combined evaluation with all five filters.
+    check_drug_likeness: Combined evaluation with all filters (including PAINS/QED).
+    pains_filter: PAINS substructure interference filter.
+    qed_score: Quantitative Estimate of Drug-likeness score.
 """
 
 from chemfuse.compute.descriptors import (
@@ -30,6 +32,8 @@ from chemfuse.compute.druglikeness import (
     ghose_filter,
     lipinski_filter,
     muegge_filter,
+    pains_filter,
+    qed_score,
     veber_filter,
 )
 from chemfuse.compute.fingerprints import (
@@ -49,11 +53,14 @@ __all__ = [
     "compute_fingerprint",
     "tanimoto_similarity",
     "bulk_tanimoto",
-    # Drug-likeness
+    # Drug-likeness (five core filters)
     "lipinski_filter",
     "veber_filter",
     "ghose_filter",
     "egan_filter",
     "muegge_filter",
     "check_drug_likeness",
+    # PAINS and QED (require RDKit + SMILES)
+    "pains_filter",
+    "qed_score",
 ]

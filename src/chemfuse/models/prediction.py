@@ -20,6 +20,11 @@ class DrugLikeness(BaseModel):
 
     Holds FilterResult for each of the five standard drug-likeness filters
     (Lipinski, Veber, Ghose, Egan, Muegge) and an overall_pass flag.
+
+    Optional fields populated when a SMILES string is available and RDKit is
+    installed:
+        pains: PAINS substructure filter result.
+        qed: QED score and classification.
     """
 
     model_config = ConfigDict(populate_by_name=True)
@@ -29,10 +34,12 @@ class DrugLikeness(BaseModel):
     ghose: FilterResult
     egan: FilterResult
     muegge: FilterResult
+    pains: FilterResult | None = None
+    qed: dict[str, object] | None = None
 
     @property
     def overall_pass(self) -> bool:
-        """True only if all five filters pass."""
+        """True only if all five core filters pass."""
         return all(
             [
                 self.lipinski.pass_filter,
@@ -43,19 +50,23 @@ class DrugLikeness(BaseModel):
             ]
         )
 
-    def summary(self) -> dict[str, bool]:
+    def summary(self) -> dict[str, bool | None]:
         """Return a dict of filter name to pass/fail boolean.
 
         Returns:
             Dictionary mapping filter names to pass/fail status.
+            PAINS and QED entries are included only when available.
         """
-        return {
+        result: dict[str, bool | None] = {
             "lipinski": self.lipinski.pass_filter,
             "veber": self.veber.pass_filter,
             "ghose": self.ghose.pass_filter,
             "egan": self.egan.pass_filter,
             "muegge": self.muegge.pass_filter,
         }
+        if self.pains is not None:
+            result["pains"] = self.pains.pass_filter
+        return result
 
 class PAINSAlert(BaseModel):
     """A single PAINS (Pan Assay Interference Compound) substructure alert."""

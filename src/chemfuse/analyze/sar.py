@@ -6,6 +6,7 @@ Provides activity cliff detection and similarity network construction.
 from __future__ import annotations
 
 import logging
+import math
 from typing import Any
 
 from chemfuse.analyze.similarity import tanimoto_matrix
@@ -22,11 +23,25 @@ except ImportError:
     _NX_AVAILABLE = False
 
 
+def _to_pic50(value_nm: float) -> float:
+    """Convert an IC50/Ki value in nM to pIC50 (-log10 of molar concentration).
+
+    Args:
+        value_nm: Activity value in nanomolar units.
+
+    Returns:
+        pIC50 value (dimensionless, typically 5-10 for drug-like molecules).
+    """
+    return -math.log10(value_nm * 1e-9)
+
+
 def detect_activity_cliffs(
     compounds: list[dict[str, Any]],
     activity_col: str = "activity",
     sim_threshold: float = 0.8,
     fp_type: str = "morgan",
+    log_transform: bool = False,
+    score_method: str = "product",
 ) -> list[dict[str, Any]]:
     """Detect activity cliffs in a set of compounds.
 
@@ -39,6 +54,19 @@ def detect_activity_cliffs(
         activity_col: Name of the activity column in each compound dict.
         sim_threshold: Minimum Tanimoto similarity to consider a pair.
         fp_type: Fingerprint type for similarity computation.
+        log_transform: When True, convert raw activity values (assumed to be
+            in nM) to pIC50 = -log10(value * 1e-9) before computing
+            differences. Use this for IC50/Ki data that spans multiple orders
+            of magnitude (e.g., 1 nM to 100 uM); without it, micromolar
+            compounds dominate the scores purely due to scale.
+        score_method: Scoring formula to use. Options:
+
+            - ``"product"`` (default, backward-compatible): ``sim * |delta_activity|``
+            - ``"sali"``: Structure-Activity Landscape Index
+              ``|delta_activity| / (1 - similarity)``. Penalises pairs with
+              very high similarity more strongly than the product method.
+              A similarity of exactly 1.0 is clamped to 0.9999 to avoid
+              division by zero.
 
     Returns:
         List of cliff dicts sorted by descending cliff_score. Each dict has:
@@ -47,7 +75,13 @@ def detect_activity_cliffs(
 
     Raises:
         ValueError: If the activity column is missing from any compound.
+        ValueError: If *score_method* is not ``"product"`` or ``"sali"``.
     """
+    if score_method not in ("product", "sali"):
+        raise ValueError(
+            f"Unknown score_method: {score_method!r}. Supported: 'product', 'sali'."
+        )
+
     if not compounds:
         return []
 
@@ -60,7 +94,12 @@ def detect_activity_cliffs(
             )
 
     smiles_list = [c["smiles"] for c in compounds]
-    activities = [float(c[activity_col]) for c in compounds]
+    raw_activities = [float(c[activity_col]) for c in compounds]
+
+    if log_transform:
+        activities = [_to_pic50(v) for v in raw_activities]
+    else:
+        activities = raw_activities
 
     sim_mat = tanimoto_matrix(smiles_list, fp_type=fp_type)
 
@@ -71,13 +110,18 @@ def detect_activity_cliffs(
             sim = float(sim_mat[i, j])
             if sim >= sim_threshold:
                 act_diff = abs(activities[i] - activities[j])
-                cliff_score = sim * act_diff
+                if score_method == "sali":
+                    # Clamp similarity to avoid division by zero when sim == 1.0
+                    sim_clamped = min(sim, 0.9999)
+                    cliff_score = act_diff / (1.0 - sim_clamped)
+                else:
+                    cliff_score = sim * act_diff
                 cliffs.append({
                     "smiles_1": smiles_list[i],
                     "smiles_2": smiles_list[j],
                     "similarity": round(sim, 4),
-                    "activity_1": activities[i],
-                    "activity_2": activities[j],
+                    "activity_1": raw_activities[i],
+                    "activity_2": raw_activities[j],
                     "activity_diff": round(act_diff, 4),
                     "cliff_score": round(cliff_score, 4),
                 })

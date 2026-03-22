@@ -103,6 +103,30 @@ OPENTARGETS_MULTIPLE_DISEASES_RESPONSE = {
     }
 }
 
+# Response with 5 diseases and 3 targets — used to verify no Cartesian product
+OPENTARGETS_5D_3T_RESPONSE = {
+    "data": {
+        "drug": {
+            "id": "CHEMBL42",
+            "name": "TESTDRUG",
+            "linkedDiseases": {
+                "count": 5,
+                "rows": [
+                    {"disease": {"id": f"EFO_00{i}", "name": f"disease_{i}"}, "score": 0.5, "evidenceCount": 10}
+                    for i in range(1, 6)
+                ],
+            },
+            "linkedTargets": {
+                "count": 3,
+                "rows": [
+                    {"target": {"id": f"ENSG0000000000{i}", "approvedSymbol": f"GENE{i}", "approvedName": f"gene {i}"}}
+                    for i in range(1, 4)
+                ],
+            },
+        }
+    }
+}
+
 OPENTARGETS_NO_DISEASES_RESPONSE = {
     "data": {
         "drug": {
@@ -156,18 +180,25 @@ class TestOpenTargetsSearchByChemblId:
     @pytest.mark.asyncio
     @respx.mock
     async def test_association_fields_populated(self) -> None:
-        """search_by_chembl_id correctly populates TargetAssociation fields."""
+        """search_by_chembl_id correctly populates TargetAssociation fields.
+
+        With one disease and one target the response produces 2 independent
+        associations: one disease association and one target association.
+        """
         respx.post(OPENTARGETS_URL).mock(
             return_value=Response(200, json=OPENTARGETS_DISEASE_RESPONSE)
         )
         adapter = OpenTargetsAdapter()
         associations = await adapter.search_by_chembl_id(ASPIRIN_CHEMBL_ID)
-        # Should have at least one association with pain disease and PTGS1 target
-        assoc = associations[0]
-        assert assoc.disease_name == "pain"
-        assert assoc.target_name == "PTGS1"
-        assert assoc.association_score == pytest.approx(0.85)
-        assert assoc.evidence_count == 42
+        # Exactly 2 associations: one disease, one target (no Cartesian product)
+        assert len(associations) == 2
+
+        disease_assoc = next(a for a in associations if a.disease_name == "pain")
+        assert disease_assoc.association_score == pytest.approx(0.85)
+        assert disease_assoc.evidence_count == 42
+
+        target_assoc = next(a for a in associations if a.target_name == "PTGS1")
+        assert target_assoc.disease_name is None
 
     @pytest.mark.asyncio
     @respx.mock
@@ -217,16 +248,23 @@ class TestOpenTargetsSearchByChemblId:
     @pytest.mark.asyncio
     @respx.mock
     async def test_multiple_diseases_returns_multiple_associations(self) -> None:
-        """search_by_chembl_id returns one association per disease row."""
+        """search_by_chembl_id returns one association per disease plus one per target.
+
+        2 diseases + 1 target must produce exactly 3 associations, not 2*1=2 or
+        a Cartesian 2*1=2. The two types are emitted independently.
+        """
         respx.post(OPENTARGETS_URL).mock(
             return_value=Response(200, json=OPENTARGETS_MULTIPLE_DISEASES_RESPONSE)
         )
         adapter = OpenTargetsAdapter()
         associations = await adapter.search_by_chembl_id(ASPIRIN_CHEMBL_ID)
-        assert len(associations) >= 2
-        disease_names = [a.disease_name for a in associations]
+        # 2 disease associations + 1 target association = 3 total
+        assert len(associations) == 3
+        disease_names = [a.disease_name for a in associations if a.disease_name]
         assert "inflammation" in disease_names
         assert "fever" in disease_names
+        target_names = [a.target_name for a in associations]
+        assert "PTGS1" in target_names
 
     @pytest.mark.asyncio
     @respx.mock
@@ -252,6 +290,58 @@ class TestOpenTargetsSearchByChemblId:
         # Post method raises SourceError on non-200
         with pytest.raises(SourceError):
             await adapter.search_by_chembl_id(ASPIRIN_CHEMBL_ID)
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_5_diseases_3_targets_produces_8_not_15(self) -> None:
+        """5 diseases + 3 targets must produce exactly 8 associations, not 15.
+
+        The disease and target lists are independent; they must not be
+        cross-joined into a Cartesian product (5*3=15).
+        """
+        respx.post(OPENTARGETS_URL).mock(
+            return_value=Response(200, json=OPENTARGETS_5D_3T_RESPONSE)
+        )
+        adapter = OpenTargetsAdapter()
+        associations = await adapter.search_by_chembl_id("CHEMBL42")
+        assert len(associations) == 8, (
+            f"Expected 8 associations (5 disease + 3 target), got {len(associations)}. "
+            "Disease and target associations must not be cross-joined."
+        )
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_disease_associations_have_no_target_cross_product(self) -> None:
+        """Disease associations carry disease info; target fields are not replicated per disease."""
+        respx.post(OPENTARGETS_URL).mock(
+            return_value=Response(200, json=OPENTARGETS_5D_3T_RESPONSE)
+        )
+        adapter = OpenTargetsAdapter()
+        associations = await adapter.search_by_chembl_id("CHEMBL42")
+        disease_assocs = [a for a in associations if a.disease_name is not None]
+        # Exactly 5 disease associations, one per disease row
+        assert len(disease_assocs) == 5
+        disease_names = {a.disease_name for a in disease_assocs}
+        assert disease_names == {f"disease_{i}" for i in range(1, 6)}
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_target_associations_are_independent(self) -> None:
+        """Target associations carry target info; disease fields are None."""
+        respx.post(OPENTARGETS_URL).mock(
+            return_value=Response(200, json=OPENTARGETS_5D_3T_RESPONSE)
+        )
+        adapter = OpenTargetsAdapter()
+        associations = await adapter.search_by_chembl_id("CHEMBL42")
+        target_assocs = [a for a in associations if a.disease_name is None]
+        # Exactly 3 target associations, one per target row
+        assert len(target_assocs) == 3
+        target_names = {a.target_name for a in target_assocs}
+        assert target_names == {"GENE1", "GENE2", "GENE3"}
+        # Confirm disease fields are absent on target-only entries
+        for ta in target_assocs:
+            assert ta.disease_id is None
+            assert ta.disease_name is None
 
 
 class TestOpenTargetsGetTargetInfo:

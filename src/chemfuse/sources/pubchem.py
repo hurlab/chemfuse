@@ -419,10 +419,10 @@ class PubChemAdapter(SourceAdapter):
         )
 
         smiles = (
-            prop.get("CanonicalSMILES")
+            prop.get("IsomericSMILES")
+            or prop.get("CanonicalSMILES")
             or prop.get("SMILES")
             or prop.get("ConnectivitySMILES")
-            or prop.get("IsomericSMILES")
             or ""
         )
         name = prop.get("IUPACName")

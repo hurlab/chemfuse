@@ -128,17 +128,102 @@ def _rule_bbb(mol: Any) -> ADMETPrediction:
     )
 
 
-def _rule_cyp_inhibition(mol: Any, cyp: str) -> ADMETPrediction:
-    """CYP inhibition risk based on aromatic ring count and nitrogen content."""
+def _rule_cyp1a2_inhibition(mol: Any) -> ADMETPrediction:
+    """CYP1A2 inhibition risk.
+
+    CYP1A2 favours planar, aromatic substrates with low-to-moderate MW.
+    Risk factors: >= 3 aromatic rings, MW < 400, LogP < 3.
+    Ref: Zhou et al. Drug Metab Rev 2009.
+    """
     logp = Descriptors.MolLogP(mol)
     mw = Descriptors.MolWt(mol)
     aromatic_rings = rdMolDescriptors.CalcNumAromaticRings(mol)
-    n_atoms = sum(1 for a in mol.GetAtoms() if a.GetAtomicNum() == 7)
-    risk = sum([logp > 3, mw > 300, aromatic_rings >= 2, n_atoms >= 1]) / 4.0
-    category = "high" if risk >= 0.75 else ("medium" if risk >= 0.5 else "low")
+    # Planarity (>= 3 fused/aromatic rings) is the primary CYP1A2 driver
+    risk = sum([aromatic_rings >= 3, mw < 400, logp < 3]) / 3.0
+    category = "high" if risk >= 0.67 else ("medium" if risk >= 0.33 else "low")
     return _make_prediction(
-        cyp, round(risk, 3),
+        "cyp1a2_inhibition", round(risk, 3),
         confidence=0.55, method="rule-based", category=category,
+    )
+
+
+def _rule_cyp2c9_inhibition(mol: Any) -> ADMETPrediction:
+    """CYP2C9 inhibition risk.
+
+    CYP2C9 prefers lipophilic, acidic substrates of moderate-to-large size.
+    Risk factors: LogP > 2.5, MW > 300, HBA >= 2.
+    Ref: Miners & Birkett Br J Clin Pharmacol 1998.
+    """
+    logp = Descriptors.MolLogP(mol)
+    mw = Descriptors.MolWt(mol)
+    hba = rdMolDescriptors.CalcNumHBA(mol)
+    risk = sum([logp > 2.5, mw > 300, hba >= 2]) / 3.0
+    category = "high" if risk >= 0.67 else ("medium" if risk >= 0.33 else "low")
+    return _make_prediction(
+        "cyp2c9_inhibition", round(risk, 3),
+        confidence=0.55, method="rule-based", category=category,
+    )
+
+
+def _rule_cyp2c19_inhibition(mol: Any) -> ADMETPrediction:
+    """CYP2C19 inhibition risk.
+
+    CYP2C19 acts on smaller molecules than CYP2C9, often with nitrogen.
+    Risk factors: MW in 200-450 range, LogP 1-4, >= 1 nitrogen atom.
+    Ref: Goldstein J Clin Pharmacol 2001.
+    """
+    logp = Descriptors.MolLogP(mol)
+    mw = Descriptors.MolWt(mol)
+    n_atoms = sum(1 for a in mol.GetAtoms() if a.GetAtomicNum() == 7)
+    mw_in_range = 200 <= mw <= 450
+    logp_in_range = 1.0 <= logp <= 4.0
+    risk = sum([mw_in_range, logp_in_range, n_atoms >= 1]) / 3.0
+    category = "high" if risk >= 0.67 else ("medium" if risk >= 0.33 else "low")
+    return _make_prediction(
+        "cyp2c19_inhibition", round(risk, 3),
+        confidence=0.5, method="rule-based", category=category,
+    )
+
+
+def _rule_cyp2d6_inhibition(mol: Any) -> ADMETPrediction:
+    """CYP2D6 inhibition risk.
+
+    CYP2D6 has a strong preference for basic nitrogen (protonatable amine).
+    Risk factors: basic sp3 N present, LogP 1-4, MW 200-500.
+    Ref: de Groot et al. Drug Metab Rev 1999.
+    """
+    logp = Descriptors.MolLogP(mol)
+    mw = Descriptors.MolWt(mol)
+    # Basic amine SMARTS: sp3 N not in amide/sulfonamide/imine
+    basic_n_smarts = Chem.MolFromSmarts(
+        "[NX3;H2,H1,H0;!$(NC=O);!$(NS=O);!$(N=*);!$(N#*);!$(n)]"
+    )
+    has_basic_n = bool(basic_n_smarts and mol.GetSubstructMatches(basic_n_smarts))
+    mw_in_range = 200 <= mw <= 500
+    logp_in_range = 1.0 <= logp <= 4.0
+    risk = sum([has_basic_n, mw_in_range, logp_in_range]) / 3.0
+    category = "high" if risk >= 0.67 else ("medium" if risk >= 0.33 else "low")
+    return _make_prediction(
+        "cyp2d6_inhibition", round(risk, 3),
+        confidence=0.55, method="rule-based", category=category,
+    )
+
+
+def _rule_cyp3a4_inhibition(mol: Any) -> ADMETPrediction:
+    """CYP3A4 inhibition risk.
+
+    CYP3A4 processes large, lipophilic molecules with multiple aromatic rings.
+    Risk factors: MW > 400, LogP > 3, >= 2 aromatic rings.
+    Ref: Ekins et al. Drug Metab Dispos 1999.
+    """
+    logp = Descriptors.MolLogP(mol)
+    mw = Descriptors.MolWt(mol)
+    aromatic_rings = rdMolDescriptors.CalcNumAromaticRings(mol)
+    risk = sum([mw > 400, logp > 3, aromatic_rings >= 2]) / 3.0
+    category = "high" if risk >= 0.67 else ("medium" if risk >= 0.33 else "low")
+    return _make_prediction(
+        "cyp3a4_inhibition", round(risk, 3),
+        confidence=0.6, method="rule-based", category=category,
     )
 
 
@@ -219,12 +304,25 @@ def _rule_clearance(mol: Any) -> ADMETPrediction:
 
 
 def _rule_herg(mol: Any) -> ADMETPrediction:
-    """hERG liability based on logP and molecular weight."""
+    """hERG liability based on logP, MW, and basic nitrogen.
+
+    hERG channel blockade is specifically associated with BASIC nitrogen
+    (sp3, protonatable at physiological pH).  Amide N, sulfonamide N,
+    imine N, and aromatic ring N (pyrrole/indole/pyridine) do NOT confer
+    hERG risk and must be excluded.
+
+    SMARTS: sp3 N that is not in amide, sulfonamide, imine, nitrile, or
+    aromatic ring (covers tertiary/secondary/primary aliphatic amines,
+    piperidine, morpholine, piperazine, etc.).
+    """
     logp = Descriptors.MolLogP(mol)
     mw = Descriptors.MolWt(mol)
-    n_atoms = sum(1 for a in mol.GetAtoms() if a.GetAtomicNum() == 7)
-    # High logP + basic nitrogen = hERG risk
-    risk = sum([logp > 3.7, mw > 300, n_atoms >= 1]) / 3.0
+    # Basic sp3 amine: NX3, any H-count, not in amide/sulfonamide/imine/nitrile/aromatic
+    basic_n_smarts = Chem.MolFromSmarts(
+        "[NX3;H2,H1,H0;!$(NC=O);!$(NS=O);!$(N=*);!$(N#*);!$(n)]"
+    )
+    has_basic_n = bool(basic_n_smarts and mol.GetSubstructMatches(basic_n_smarts))
+    risk = sum([logp > 3.7, mw > 300, has_basic_n]) / 3.0
     category = "high" if risk >= 0.67 else ("medium" if risk >= 0.33 else "low")
     return _make_prediction(
         "herg_liability", round(risk, 3),
@@ -233,16 +331,31 @@ def _rule_herg(mol: Any) -> ADMETPrediction:
 
 
 def _rule_ames(mol: Any) -> ADMETPrediction:
-    """AMES mutagenicity: aromatic amines and nitro groups as risk factors."""
-    smiles = Chem.MolToSmiles(mol)
-    # Very simplified heuristic
-    nitro = "N(=O)=O" in smiles or "[N+](=O)[O-]" in smiles
-    aromatic_amine = False
-    for atom in mol.GetAtoms():
-        if atom.GetAtomicNum() == 7 and atom.GetIsAromatic():
-            aromatic_amine = True
-            break
-    score = (0.5 if nitro else 0.0) + (0.4 if aromatic_amine else 0.0)
+    """AMES mutagenicity: aromatic amines and nitro groups as risk factors.
+
+    Aromatic amine definition: -NH2 or -NHR where N is attached to an
+    aromatic carbon (amine bonded TO an aromatic ring, NOT a ring nitrogen
+    such as pyridine or pyrimidine).  The previous approach incorrectly
+    flagged ring-N atoms via atom.GetIsAromatic().
+
+    SMARTS patterns:
+    - Aromatic amine (primary/secondary): [NH2]c or [NH1]c
+    - Nitro group: [$([N+](=O)[O-]),$([N](=O)=O)]
+    - Nitroso group: [N]=O (not part of nitro)
+    """
+    # Aromatic amine: N-H bonded directly to aromatic carbon
+    aro_amine_smarts = Chem.MolFromSmarts("[NH2,NH1;!$(N~[!c])]c")
+    aromatic_amine = bool(aro_amine_smarts and mol.GetSubstructMatches(aro_amine_smarts))
+
+    # Nitro group (ionic and neutral representations)
+    nitro_smarts = Chem.MolFromSmarts("[$([N+](=O)[O-]),$([N](=O)=O)]")
+    nitro = bool(nitro_smarts and mol.GetSubstructMatches(nitro_smarts))
+
+    # Nitroso group (N=O that is not part of a nitro)
+    nitroso_smarts = Chem.MolFromSmarts("[N;!$(N(=O)[O,O-]);!$(N~[#8]~[#8])]=[O]")
+    nitroso = bool(nitroso_smarts and mol.GetSubstructMatches(nitroso_smarts))
+
+    score = (0.5 if nitro else 0.0) + (0.4 if aromatic_amine else 0.0) + (0.2 if nitroso else 0.0)
     score = min(score, 1.0)
     category = "high" if score >= 0.5 else ("medium" if score >= 0.3 else "low")
     return _make_prediction(
@@ -324,11 +437,11 @@ def _rule_based_profile(smiles: str, mol: Any | None = None) -> dict[str, ADMETP
     preds["caco2_permeability"] = _rule_caco2(mol)
     preds["hia"] = _rule_hia(mol)
     preds["bbb_permeability"] = _rule_bbb(mol)
-    preds["cyp1a2_inhibition"] = _rule_cyp_inhibition(mol, "cyp1a2_inhibition")
-    preds["cyp2c9_inhibition"] = _rule_cyp_inhibition(mol, "cyp2c9_inhibition")
-    preds["cyp2c19_inhibition"] = _rule_cyp_inhibition(mol, "cyp2c19_inhibition")
-    preds["cyp2d6_inhibition"] = _rule_cyp_inhibition(mol, "cyp2d6_inhibition")
-    preds["cyp3a4_inhibition"] = _rule_cyp_inhibition(mol, "cyp3a4_inhibition")
+    preds["cyp1a2_inhibition"] = _rule_cyp1a2_inhibition(mol)
+    preds["cyp2c9_inhibition"] = _rule_cyp2c9_inhibition(mol)
+    preds["cyp2c19_inhibition"] = _rule_cyp2c19_inhibition(mol)
+    preds["cyp2d6_inhibition"] = _rule_cyp2d6_inhibition(mol)
+    preds["cyp3a4_inhibition"] = _rule_cyp3a4_inhibition(mol)
     preds["half_life"] = _rule_half_life(mol)
     preds["clearance"] = _rule_clearance(mol)
     preds["herg_liability"] = _rule_herg(mol)

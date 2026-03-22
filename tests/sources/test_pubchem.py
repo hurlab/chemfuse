@@ -361,6 +361,37 @@ class TestParsePropDict:
         compound = adapter._prop_dict_to_compound(prop)
         assert compound.smiles == "[C@@H](F)(Cl)Br"
 
+    def test_isomeric_smiles_preferred_over_canonical(self, adapter: PubChemAdapter):
+        """IsomericSMILES takes priority over CanonicalSMILES to preserve stereochemistry."""
+        prop = {
+            "CID": 33741,
+            "CanonicalSMILES": "CC(CCc1ccccc1)C(=O)O",
+            "IsomericSMILES": "C[C@@H](CCc1ccccc1)C(=O)O",
+        }
+        compound = adapter._prop_dict_to_compound(prop)
+        # The isomeric form encodes the (S) stereocentre; canonical does not
+        assert compound.smiles == "C[C@@H](CCc1ccccc1)C(=O)O"
+        assert "@" in compound.smiles  # stereo annotation present
+
+    def test_canonical_smiles_used_when_isomeric_absent(self, adapter: PubChemAdapter):
+        """Falls back to CanonicalSMILES when IsomericSMILES is not present."""
+        prop = {
+            "CID": 2244,
+            "CanonicalSMILES": "CC(=O)Oc1ccccc1C(=O)O",
+        }
+        compound = adapter._prop_dict_to_compound(prop)
+        assert compound.smiles == "CC(=O)Oc1ccccc1C(=O)O"
+
+    def test_isomeric_smiles_none_falls_back_to_canonical(self, adapter: PubChemAdapter):
+        """When IsomericSMILES key is present but None, falls back to CanonicalSMILES."""
+        prop = {
+            "CID": 2244,
+            "IsomericSMILES": None,
+            "CanonicalSMILES": "CC(=O)Oc1ccccc1C(=O)O",
+        }
+        compound = adapter._prop_dict_to_compound(prop)
+        assert compound.smiles == "CC(=O)Oc1ccccc1C(=O)O"
+
 
 class TestResolveListKeyOrIds:
     async def test_resolves_direct_identifier_list(self, adapter: PubChemAdapter):

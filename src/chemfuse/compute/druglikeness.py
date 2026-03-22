@@ -7,9 +7,15 @@ Implements the five standard drug-likeness filters:
     - Egan Filter (Egan et al., 2000)
     - Muegge Filter (Muegge et al., 2001)
 
+Plus two additional analyses:
+    - PAINS Filter (Baell & Holloway, 2010, J Med Chem 53:2719)
+    - QED Score (Bickerton et al., 2012, Nature Chem 4:90)
+
 Filters work WITHOUT RDKit by using pre-computed properties (e.g. from PubChem).
 When RDKit IS installed and a SMILES string is provided, properties are computed
 locally, filling in any None values from the fetched properties.
+
+PAINS and QED require RDKit and a valid SMILES or molecule object.
 """
 
 from __future__ import annotations
@@ -27,10 +33,22 @@ try:
         Descriptors,  # type: ignore[import-not-found]
         rdMolDescriptors,  # type: ignore[import-not-found]
     )
+    from rdkit.Chem.FilterCatalog import (  # type: ignore[import-not-found]
+        FilterCatalog,
+        FilterCatalogParams,
+    )
+    from rdkit.Chem.QED import qed as _rdkit_qed  # type: ignore[import-not-found]
 
     _RDKIT_AVAILABLE = True
+
+    # Build the PAINS catalog once at module load; it is expensive to initialise.
+    _pains_params = FilterCatalogParams()
+    _pains_params.AddCatalog(FilterCatalogParams.FilterCatalogs.PAINS)
+    _PAINS_CATALOG: FilterCatalog = FilterCatalog(_pains_params)
+
 except ImportError:
     _RDKIT_AVAILABLE = False
+    _PAINS_CATALOG = None  # type: ignore[assignment]
 
 
 # ---------------------------------------------------------------------------
@@ -469,11 +487,118 @@ def muegge_filter(
     )
 
 
+def pains_filter(
+    smiles: str,
+) -> FilterResult:
+    """Apply the PAINS (Pan Assay Interference Compounds) substructure filter.
+
+    Identifies compounds with substructures known to produce false positives in
+    high-throughput screens (Baell & Holloway, 2010, J Med Chem 53:2719).
+
+    Requires RDKit.  Raises ``ImportError`` when RDKit is not installed.
+
+    Args:
+        smiles: SMILES string for the compound to evaluate.
+
+    Returns:
+        FilterResult with:
+            pass_filter=True  when no PAINS alert is matched,
+            pass_filter=False when a PAINS substructure is found.
+            violations: empty list or single-item list with the matched pattern
+                name; violations count reflects 0 or 1 respectively.
+            details: includes 'pains_match' key with the matched pattern name
+                (or None when the compound passes).
+
+    Raises:
+        ImportError: when RDKit is not available.
+        ValueError: when the SMILES string cannot be parsed.
+    """
+    if not _RDKIT_AVAILABLE:
+        raise ImportError(
+            "RDKit is required for pains_filter. "
+            "Install it with: pip install rdkit"
+        )
+
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None:
+        raise ValueError(f"Could not parse SMILES: {smiles!r}")
+
+    entry = _PAINS_CATALOG.GetFirstMatch(mol)
+
+    if entry is None:
+        return FilterResult(
+            pass_filter=True,
+            violations=[],
+            details={"pains_match": None},
+        )
+
+    pattern_name: str = entry.GetDescription()
+    return FilterResult(
+        pass_filter=False,
+        violations=[f"PAINS alert matched: {pattern_name}"],
+        details={"pains_match": pattern_name},
+    )
+
+
+# QED classification thresholds (Bickerton et al., 2012)
+_QED_HIGH_THRESHOLD = 0.67
+_QED_LOW_THRESHOLD = 0.33
+
+
+def qed_score(
+    smiles: str,
+) -> dict[str, object]:
+    """Compute the Quantitative Estimate of Drug-likeness (QED) score.
+
+    Uses a desirability function over 8 molecular properties to produce a
+    continuous score in [0, 1] (Bickerton et al., 2012, Nature Chem 4:90).
+
+    Requires RDKit.  Raises ``ImportError`` when RDKit is not installed.
+
+    Args:
+        smiles: SMILES string for the compound to evaluate.
+
+    Returns:
+        Dict with:
+            'qed' (float): score in [0, 1]; higher means more drug-like.
+            'classification' (str): 'high' (>=0.67), 'medium' (>=0.33), or
+                'low' (<0.33).
+
+    Raises:
+        ImportError: when RDKit is not available.
+        ValueError: when the SMILES string cannot be parsed.
+    """
+    if not _RDKIT_AVAILABLE:
+        raise ImportError(
+            "RDKit is required for qed_score. "
+            "Install it with: pip install rdkit"
+        )
+
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None:
+        raise ValueError(f"Could not parse SMILES: {smiles!r}")
+
+    score: float = _rdkit_qed(mol)
+
+    if score >= _QED_HIGH_THRESHOLD:
+        classification = "high"
+    elif score >= _QED_LOW_THRESHOLD:
+        classification = "medium"
+    else:
+        classification = "low"
+
+    return {"qed": score, "classification": classification}
+
+
 def check_drug_likeness(
     properties: dict[str, Any],
     smiles: str | None = None,
 ) -> DrugLikeness:
-    """Run all five drug-likeness filters and return a combined DrugLikeness result.
+    """Run all drug-likeness filters and return a combined DrugLikeness result.
+
+    Always runs the five core filters (Lipinski, Veber, Ghose, Egan, Muegge).
+    When *smiles* is provided and RDKit is available, also runs the PAINS
+    substructure filter and computes the QED score.
 
     Filters work with pre-computed properties (e.g. from PubChem) or with
     locally computed RDKit values when a SMILES string is provided.
@@ -493,17 +618,34 @@ def check_drug_likeness(
             - 'heteroatom_count' / 'num_heteroatoms'
             - 'carbon_count' / 'num_carbons'
         smiles: Optional SMILES string; when provided with RDKit, fills missing
-            properties automatically.
+            properties automatically and enables PAINS + QED analysis.
 
     Returns:
-        DrugLikeness object containing FilterResult for each of the five filters.
+        DrugLikeness object containing FilterResult for each of the five core
+        filters, plus optional pains (FilterResult) and qed (dict) fields when
+        SMILES and RDKit are available.
     """
+    pains: FilterResult | None = None
+    qed: dict[str, object] | None = None
+
+    if smiles and _RDKIT_AVAILABLE:
+        try:
+            pains = pains_filter(smiles)
+        except ValueError:
+            logger.warning("PAINS filter skipped: could not parse SMILES %r", smiles)
+        try:
+            qed = qed_score(smiles)
+        except ValueError:
+            logger.warning("QED score skipped: could not parse SMILES %r", smiles)
+
     return DrugLikeness(
         lipinski=lipinski_filter(properties, smiles=smiles),
         veber=veber_filter(properties, smiles=smiles),
         ghose=ghose_filter(properties, smiles=smiles),
         egan=egan_filter(properties, smiles=smiles),
         muegge=muegge_filter(properties, smiles=smiles),
+        pains=pains,
+        qed=qed,
     )
 
 

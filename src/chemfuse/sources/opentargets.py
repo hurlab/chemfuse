@@ -224,84 +224,61 @@ class OpenTargetsAdapter(SourceAdapter):
         linked_diseases = drug.get("linkedDiseases") or {}
         disease_rows = linked_diseases.get("rows") or []
 
-        # Build a target map from linkedTargets for lookup
+        # Parse linkedTargets for drug-target relationships
         linked_targets = drug.get("linkedTargets") or {}
         target_rows = linked_targets.get("rows") or []
-        # Map target_id -> target details for merging with diseases
-        target_map: dict[str, dict[str, str]] = {}
+
+        drug_name = drug.get("name") or chembl_id
+
+        # Disease associations and target associations are independent data types.
+        # They must NOT be cross-joined (Cartesian product). Each is emitted as
+        # a separate TargetAssociation with only the relevant fields populated.
+
+        # Emit one association per disease, independently of targets
+        for row in disease_rows:
+            if not isinstance(row, dict):
+                continue
+            disease = row.get("disease") or {}
+            disease_id = disease.get("id") or ""
+            disease_name = disease.get("name") or ""
+            score = row.get("score")
+            evidence_count = row.get("evidenceCount")
+
+            # Normalize score to [0, 1]
+            normalized_score: float | None = None
+            if score is not None:
+                try:
+                    normalized_score = float(score)
+                    normalized_score = max(0.0, min(1.0, normalized_score))
+                except (TypeError, ValueError):
+                    normalized_score = None
+
+            # Use drug identity as the target placeholder; disease fields carry the data
+            assoc = TargetAssociation(
+                target_id=chembl_id,
+                target_name=drug_name,
+                disease_id=disease_id or None,
+                disease_name=disease_name or None,
+                association_score=normalized_score,
+                evidence_count=int(evidence_count) if evidence_count is not None else None,
+                source=self.name,
+            )
+            associations.append(assoc)
+
+        # Emit one association per target, independently of diseases
         for tr in target_rows:
             t = tr.get("target") or {}
             tid = t.get("id", "")
-            if tid:
-                target_map[tid] = {
-                    "id": tid,
-                    "name": t.get("approvedSymbol") or t.get("approvedName") or tid,
-                }
-
-        if disease_rows:
-            # When we have disease rows, create associations per disease
-            # Use the first available target or a generic one
-            # Most disease associations at the drug level don't have per-disease targets
-            for row in disease_rows:
-                if not isinstance(row, dict):
-                    continue
-                disease = row.get("disease") or {}
-                disease_id = disease.get("id") or ""
-                disease_name = disease.get("name") or ""
-                score = row.get("score")
-                evidence_count = row.get("evidenceCount")
-
-                # Normalize score to [0, 1]
-                normalized_score: float | None = None
-                if score is not None:
-                    try:
-                        normalized_score = float(score)
-                        normalized_score = max(0.0, min(1.0, normalized_score))
-                    except (TypeError, ValueError):
-                        normalized_score = None
-
-                # If we have targets, create one entry per target-disease pair
-                # Otherwise, create with a placeholder target
-                if target_map:
-                    for _tid, tinfo in target_map.items():
-                        assoc = TargetAssociation(
-                            target_id=tinfo["id"],
-                            target_name=tinfo["name"],
-                            disease_id=disease_id or None,
-                            disease_name=disease_name or None,
-                            association_score=normalized_score,
-                            evidence_count=int(evidence_count) if evidence_count is not None else None,
-                            source=self.name,
-                        )
-                        associations.append(assoc)
-                else:
-                    # No linked targets available; use drug name or chembl_id as placeholder
-                    drug_name = drug.get("name") or chembl_id
-                    assoc = TargetAssociation(
-                        target_id=chembl_id,
-                        target_name=drug_name,
-                        disease_id=disease_id or None,
-                        disease_name=disease_name or None,
-                        association_score=normalized_score,
-                        evidence_count=int(evidence_count) if evidence_count is not None else None,
-                        source=self.name,
-                    )
-                    associations.append(assoc)
-
-        elif target_rows:
-            # Only targets available, no disease scores
-            for tr in target_rows:
-                t = tr.get("target") or {}
-                tid = t.get("id", "")
-                tsymbol = t.get("approvedSymbol") or t.get("approvedName") or tid
-                if not tid:
-                    continue
-                assoc = TargetAssociation(
-                    target_id=tid,
-                    target_name=tsymbol,
-                    source=self.name,
-                )
-                associations.append(assoc)
+            tsymbol = t.get("approvedSymbol") or t.get("approvedName") or tid
+            if not tid:
+                continue
+            assoc = TargetAssociation(
+                target_id=tid,
+                target_name=tsymbol,
+                # disease fields intentionally left None; this is a target-only entry
+                source=self.name,
+            )
+            associations.append(assoc)
 
         return associations
 
