@@ -12,6 +12,29 @@ ChemFuse unifies compound search, ADMET prediction, and cross-database identifie
 
 ---
 
+## Why ChemFuse?
+
+Modern drug discovery and chemical research depend on data scattered across multiple public databases. Each database offers unique strengths — PubChem for compound structures and bioassays, ChEMBL for drug-target bioactivities, BindingDB for protein-ligand binding affinities, UniChem for cross-database identifier resolution, Open Targets for disease-target associations, and SureChEMBL for patent chemistry. Yet querying these databases individually, reconciling their different APIs and data formats, and merging the results into a coherent dataset remains a tedious and error-prone process.
+
+A typical workflow looks like this: export SMILES from one database, query a second database, parse the JSON response, repeat for the remaining sources, manually combine the results, and finally compute molecular descriptors. For a batch of even a few hundred compounds, this can take hours.
+
+**ChemFuse eliminates this friction.** A single function call searches all six databases in parallel, merges the results by structure, and returns a unified `CompoundCollection`. From there, you can compute 200+ molecular descriptors, apply drug-likeness filters (Lipinski, Veber, Ghose, Egan, Muegge), predict ADMET properties using ML models, cluster compounds in chemical space, and export to CSV, Excel, or SDF — without leaving Python, R, or the command line.
+
+### Key advantages
+
+- **No API keys required** — all integrated databases are freely accessible public resources
+- **Async-first architecture** — parallel database queries with connection pooling, rate-limit handling, and automatic retry with backoff
+- **Local caching** — SQLite-based cache with TTL and LRU eviction avoids redundant network requests
+- **Graceful degradation** — RDKit and ADMET-AI are optional; ChemFuse falls back to rule-based heuristics when they are unavailable
+- **Multi-interface** — Python package, R package (via reticulate), CLI, Streamlit web dashboard, and Docker images
+- **Research-ready** — batch screening of 500 compounds completes in ~3 minutes, a 5x speedup over manual workflows
+
+### Who is ChemFuse for?
+
+ChemFuse is designed for computational chemists, bioinformaticians, and drug discovery researchers who need to integrate data from multiple chemical sources. Whether you are profiling a single lead compound, screening a library of candidates, or building a reproducible analysis pipeline, ChemFuse provides a consistent API that scales from interactive exploration to automated batch processing.
+
+---
+
 ## Installation
 
 ### Python
@@ -255,18 +278,18 @@ Speed comparison with manual workflows for batch compound screening:
 
 | Compounds | ChemFuse | Manual | Speedup |
 |-----------|----------|--------|---------|
-| 100 | 45 sec | 3:20 min | 4.4x |
-| 500 | 3 min | 16 min | 5.3x |
-| 1000 | 5:40 min | 35 min | 6.2x |
+| 100 | ~45 sec | ~3:20 min | 4.4x |
+| 500 | ~3 min | ~16 min | 5.3x |
+| 1000 | ~5:40 min | ~35 min | 6.2x |
 
 *Manual: Export SMILES → Query PubChem → Parse JSON → Query ChEMBL → Combine results → Calculate descriptors*
 
 ## Testing
 
-966 tests, 85%+ coverage:
-- 500+ unit tests (core functionality)
+1137 tests, 85%+ coverage:
+- 600+ unit tests (core functionality)
 - 400+ integration tests (database adapters)
-- 66 end-to-end workflow tests
+- 100+ web UI and CLI tests
 - Performance benchmarks
 - Docker image validation
 
