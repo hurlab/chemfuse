@@ -50,13 +50,12 @@ def _render_manual_lookup() -> None:
 def _lookup_compound(identifier: str) -> dict[str, Any] | None:
     """Fetch compound data by CID or SMILES."""
     async def _run() -> dict[str, Any] | None:
-        from chemfuse.sources.pubchem import PubChemSource
-        src = PubChemSource()
-        async with src:
-            if identifier.isdigit():
-                results = await src.search(identifier, query_type="cid")
-            else:
-                results = await src.search(identifier, query_type="smiles")
+        from chemfuse.sources import registry
+        src = registry.get("pubchem")
+        if identifier.isdigit():
+            results = await src.search(identifier, query_type="cid")
+        else:
+            results = await src.search(identifier, query_type="smiles")
         if results:
             c = results[0]
             return c.to_dict() if hasattr(c, "to_dict") else {}
@@ -106,13 +105,13 @@ def _render_compound_profile(data: dict[str, Any]) -> None:
     with st.expander("Bioactivities (ChEMBL)"):
         _render_bioactivities(data)
 
-    with st.expander("Binding Data (BindingDB)"):
+    with st.expander("Binding Data (BindingDB) — Coming soon", expanded=False):
         _render_binding(data)
 
-    with st.expander("Patents (SureChEMBL)"):
+    with st.expander("Patents (SureChEMBL) — Coming soon", expanded=False):
         _render_patents(data)
 
-    with st.expander("Target-Disease Associations (Open Targets)"):
+    with st.expander("Target-Disease Associations (Open Targets) — Coming soon", expanded=False):
         _render_targets(data)
 
 
@@ -295,10 +294,9 @@ def _enrich_bioactivities(data: dict[str, Any]) -> None:
         return
 
     async def _run() -> list[Any]:
-        from chemfuse.sources.chembl import ChEMBLSource
-        src = ChEMBLSource()
-        async with src:
-            return await src.get_bioactivities(chembl_id)
+        from chemfuse.sources import registry
+        src = registry.get("chembl")
+        return await src.get_bioactivities(chembl_id)
 
     try:
         bioacts = _run_async(_run())

@@ -441,3 +441,9 @@ class PubChemAdapter(SourceAdapter):
     def is_available(self) -> bool:
         """Check if PubChem is available (sync version checks URL format only)."""
         return True  # Async availability check not practical in sync context
+
+
+# backward compatibility alias
+PubChemSource = PubChemAdapter
+
+__all__ = ["PubChemAdapter", "PubChemSource"]

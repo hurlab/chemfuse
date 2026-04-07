@@ -26,6 +26,7 @@ class CompoundCollection(BaseModel):
     query: str = ""
     sources: list[str] = Field(default_factory=list)
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    warnings: list[str] = Field(default_factory=list)
 
     def __len__(self) -> int:
         return len(self.compounds)
@@ -51,6 +52,7 @@ class CompoundCollection(BaseModel):
         hba_max: int | None = None,
         rotatable_bonds_max: int | None = None,
         sources: list[str] | None = None,
+        strict: bool = False,
     ) -> CompoundCollection:
         """Filter compounds by property ranges.
 
@@ -62,6 +64,8 @@ class CompoundCollection(BaseModel):
             hba_max: Maximum hydrogen bond acceptor count.
             rotatable_bonds_max: Maximum rotatable bond count.
             sources: Filter to compounds from specified sources only.
+            strict: When True, compounds with None for any filtered property
+                are excluded. When False (default), None values pass through.
 
         Returns:
             New CompoundCollection with filtered compounds.
@@ -71,28 +75,46 @@ class CompoundCollection(BaseModel):
         for compound in self.compounds:
             props = compound.properties
 
-            if mw_range is not None and props.molecular_weight is not None:
-                if not (mw_range[0] <= props.molecular_weight <= mw_range[1]):
+            if mw_range is not None:
+                if props.molecular_weight is None:
+                    if strict:
+                        continue
+                elif not (mw_range[0] <= props.molecular_weight <= mw_range[1]):
                     continue
 
-            if logp_range is not None and props.xlogp is not None:
-                if not (logp_range[0] <= props.xlogp <= logp_range[1]):
+            if logp_range is not None:
+                if props.xlogp is None:
+                    if strict:
+                        continue
+                elif not (logp_range[0] <= props.xlogp <= logp_range[1]):
                     continue
 
-            if tpsa_range is not None and props.tpsa is not None:
-                if not (tpsa_range[0] <= props.tpsa <= tpsa_range[1]):
+            if tpsa_range is not None:
+                if props.tpsa is None:
+                    if strict:
+                        continue
+                elif not (tpsa_range[0] <= props.tpsa <= tpsa_range[1]):
                     continue
 
-            if hbd_max is not None and props.hbd_count is not None:
-                if props.hbd_count > hbd_max:
+            if hbd_max is not None:
+                if props.hbd_count is None:
+                    if strict:
+                        continue
+                elif props.hbd_count > hbd_max:
                     continue
 
-            if hba_max is not None and props.hba_count is not None:
-                if props.hba_count > hba_max:
+            if hba_max is not None:
+                if props.hba_count is None:
+                    if strict:
+                        continue
+                elif props.hba_count > hba_max:
                     continue
 
-            if rotatable_bonds_max is not None and props.rotatable_bonds is not None:
-                if props.rotatable_bonds > rotatable_bonds_max:
+            if rotatable_bonds_max is not None:
+                if props.rotatable_bonds is None:
+                    if strict:
+                        continue
+                elif props.rotatable_bonds > rotatable_bonds_max:
                     continue
 
             if sources is not None:

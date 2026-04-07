@@ -93,6 +93,7 @@ def render_mol_card(
     width: int = 200,
     height: int = 150,
     on_click_session_key: str | None = None,
+    idx: int = 0,
 ) -> None:
     """Render a single molecule card with 2D structure image and basic info.
 
@@ -101,10 +102,16 @@ def render_mol_card(
         width: Card image width.
         height: Card image height.
         on_click_session_key: Session state key to set when the compound is selected.
+        idx: Enumeration index used to ensure unique widget keys.
     """
     smiles = compound.get("smiles", "")
     cid = compound.get("cid")
-    name = compound.get("name") or compound.get("smiles", "Unknown")[:20]
+    name = (
+        compound.get("name")
+        or compound.get("formula")
+        or (f"CID:{compound['cid']}" if compound.get("cid") else None)
+        or "Unnamed"
+    )
 
     # Try RDKit SVG first, then PubChem PNG fallback
     svg_data = None
@@ -132,7 +139,7 @@ def render_mol_card(
     # Select button
     if on_click_session_key and st.button(
         "View Profile",
-        key=f"mol_select_{name}_{cid or hash(smiles or '') or 'no_id'}",
+        key=f"mol_select_{idx}",
     ):
         st.session_state[on_click_session_key] = compound
         st.session_state["current_page"] = "Profile"
@@ -162,9 +169,10 @@ def render_mol_grid(
         st.caption(f"Showing {max_compounds} of {len(compounds)} compounds.")
 
     cols = st.columns(columns)
-    for i, compound in enumerate(display):
-        with cols[i % columns]:
+    for idx, compound in enumerate(display):
+        with cols[idx % columns]:
             render_mol_card(
                 compound,
                 on_click_session_key=on_click_session_key,
+                idx=idx,
             )

@@ -18,6 +18,15 @@ class SourceRegistry:
     def __init__(self) -> None:
         self._adapters: dict[str, SourceAdapter] = {}
         self._adapter_classes: dict[str, type] = {}
+        self._cache_instance: object | None = None
+
+    @property
+    def _cache(self) -> object:
+        """Lazily create and return the shared Cache instance."""
+        if self._cache_instance is None:
+            from chemfuse.core.cache import Cache
+            self._cache_instance = Cache()
+        return self._cache_instance
 
     def register(self, name: str, adapter_class: type) -> None:
         """Register a source adapter class.
@@ -51,7 +60,10 @@ class SourceRegistry:
                 raise KeyError(
                     f"Source '{name}' not registered. Available sources: {available}"
                 )
-            self._adapters[name] = self._adapter_classes[name]()
+            try:
+                self._adapters[name] = self._adapter_classes[name](cache=self._cache)
+            except TypeError:
+                self._adapters[name] = self._adapter_classes[name]()
         return self._adapters[name]
 
     def list(self) -> list[str]:

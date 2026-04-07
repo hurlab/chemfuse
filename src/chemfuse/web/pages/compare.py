@@ -207,6 +207,11 @@ def _render_admet_comparison(
         dl = compound.get("druglikeness")
         if isinstance(dl, dict):
             admet_keys.update(k for k in dl if k.startswith("admet_"))
+        # Also check dedicated ADMET fields
+        for admet_field in ("admet", "_admet_profile"):
+            admet_data = compound.get(admet_field)
+            if isinstance(admet_data, dict):
+                admet_keys.update(admet_data.keys())
 
     if not admet_keys:
         with st.expander("ADMET Comparison"):
@@ -218,8 +223,17 @@ def _render_admet_comparison(
         for key in sorted(admet_keys):
             row: dict[str, Any] = {"ADMET Property": key}
             for name, compound in zip(names, compounds, strict=False):
+                val = None
                 dl = compound.get("druglikeness", {})
-                val = dl.get(key) if isinstance(dl, dict) else None
+                if isinstance(dl, dict):
+                    val = dl.get(key)
+                if val is None:
+                    for admet_field in ("admet", "_admet_profile"):
+                        admet_data = compound.get(admet_field)
+                        if isinstance(admet_data, dict):
+                            val = admet_data.get(key)
+                            if val is not None:
+                                break
                 row[name] = f"{val:.3f}" if isinstance(val, float) else str(val) if val is not None else "—"
             rows.append(row)
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)

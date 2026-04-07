@@ -80,6 +80,10 @@ def _render_sidebar() -> str:
         st.divider()
         st.markdown("**Data Sources**")
         st.caption("PubChem • ChEMBL • BindingDB\nSureChEMBL • Open Targets • UniChem")
+        st.divider()
+        if st.button("Clear Session", key="clear_session"):
+            st.session_state.clear()
+            st.rerun()
 
     return selected
 

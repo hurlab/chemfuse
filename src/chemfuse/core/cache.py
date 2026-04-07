@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -42,6 +43,7 @@ class Cache:
         self.enabled = enabled
         self.ttl = ttl
         self.max_entries = max_entries
+        self._lock = threading.RLock()
 
         if cache_dir is None:
             cache_dir = DEFAULT_CACHE_DIR
@@ -119,18 +121,19 @@ class Cache:
         key = self._make_key(url, params)
         now = time.time()
 
-        cursor = self._conn.execute(
-            "SELECT value FROM cache WHERE key = ? AND expires_at > ?",
-            (key, now),
-        )
-        row = cursor.fetchone()
-        if row is not None:
-            self._conn.execute(
-                "UPDATE cache SET hit_count = hit_count + 1, last_accessed = ? WHERE key = ?",
-                (now, key),
+        with self._lock:
+            cursor = self._conn.execute(
+                "SELECT value FROM cache WHERE key = ? AND expires_at > ?",
+                (key, now),
             )
-            self._conn.commit()
-            return json.loads(row[0])
+            row = cursor.fetchone()
+            if row is not None:
+                self._conn.execute(
+                    "UPDATE cache SET hit_count = hit_count + 1, last_accessed = ? WHERE key = ?",
+                    (now, key),
+                )
+                self._conn.commit()
+                return json.loads(row[0])
         return None
 
     def set(
@@ -155,13 +158,14 @@ class Cache:
         now = time.time()
         expires_at = now + (ttl if ttl is not None else self.ttl)
 
-        self._conn.execute(
-            """INSERT OR REPLACE INTO cache
-               (key, value, created_at, expires_at, url, hit_count, last_accessed)
-               VALUES (?, ?, ?, ?, ?, 0, ?)""",
-            (key, json.dumps(value), now, expires_at, url, now),
-        )
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute(
+                """INSERT OR REPLACE INTO cache
+                   (key, value, created_at, expires_at, url, hit_count, last_accessed)
+                   VALUES (?, ?, ?, ?, ?, 0, ?)""",
+                (key, json.dumps(value), now, expires_at, url, now),
+            )
+            self._conn.commit()
         self._evict_lru_if_needed()
 
     def _evict_lru_if_needed(self) -> int:
@@ -176,21 +180,22 @@ class Cache:
         if not self.max_entries or self._conn is None:
             return 0
 
-        total: int = self._conn.execute("SELECT COUNT(*) FROM cache").fetchone()[0]
-        if total <= self.max_entries:
-            return 0
+        with self._lock:
+            total: int = self._conn.execute("SELECT COUNT(*) FROM cache").fetchone()[0]
+            if total <= self.max_entries:
+                return 0
 
-        evict_count = max(1, int(self.max_entries * _EVICT_FRACTION))
-        cursor = self._conn.execute(
-            """DELETE FROM cache WHERE key IN (
-                   SELECT key FROM cache
-                   ORDER BY COALESCE(last_accessed, created_at) ASC
-                   LIMIT ?
-               )""",
-            (evict_count,),
-        )
-        self._conn.commit()
-        return cursor.rowcount
+            evict_count = max(1, int(self.max_entries * _EVICT_FRACTION))
+            cursor = self._conn.execute(
+                """DELETE FROM cache WHERE key IN (
+                       SELECT key FROM cache
+                       ORDER BY COALESCE(last_accessed, created_at) ASC
+                       LIMIT ?
+                   )""",
+                (evict_count,),
+            )
+            self._conn.commit()
+            return cursor.rowcount
 
     def invalidate(self, url: str, params: dict[str, Any] | None = None) -> bool:
         """Delete a specific cached entry.
@@ -206,9 +211,10 @@ class Cache:
             return False
 
         key = self._make_key(url, params)
-        cursor = self._conn.execute("DELETE FROM cache WHERE key = ?", (key,))
-        self._conn.commit()
-        return cursor.rowcount > 0
+        with self._lock:
+            cursor = self._conn.execute("DELETE FROM cache WHERE key = ?", (key,))
+            self._conn.commit()
+            return cursor.rowcount > 0
 
     def clear(self) -> int:
         """Remove all cached entries.
@@ -219,9 +225,10 @@ class Cache:
         if not self.enabled or self._conn is None:
             return 0
 
-        cursor = self._conn.execute("DELETE FROM cache")
-        self._conn.commit()
-        return cursor.rowcount
+        with self._lock:
+            cursor = self._conn.execute("DELETE FROM cache")
+            self._conn.commit()
+            return cursor.rowcount
 
     def clear_expired(self) -> int:
         """Remove all expired entries.
@@ -233,9 +240,10 @@ class Cache:
             return 0
 
         now = time.time()
-        cursor = self._conn.execute("DELETE FROM cache WHERE expires_at <= ?", (now,))
-        self._conn.commit()
-        return cursor.rowcount
+        with self._lock:
+            cursor = self._conn.execute("DELETE FROM cache WHERE expires_at <= ?", (now,))
+            self._conn.commit()
+            return cursor.rowcount
 
     def clear_cache(self) -> int:
         """Remove all cached entries.
@@ -262,13 +270,14 @@ class Cache:
             }
 
         now = time.time()
-        total = self._conn.execute("SELECT COUNT(*) FROM cache").fetchone()[0]
-        expired = self._conn.execute(
-            "SELECT COUNT(*) FROM cache WHERE expires_at <= ?", (now,)
-        ).fetchone()[0]
-        hits = self._conn.execute(
-            "SELECT COALESCE(SUM(hit_count), 0) FROM cache"
-        ).fetchone()[0]
+        with self._lock:
+            total = self._conn.execute("SELECT COUNT(*) FROM cache").fetchone()[0]
+            expired = self._conn.execute(
+                "SELECT COUNT(*) FROM cache WHERE expires_at <= ?", (now,)
+            ).fetchone()[0]
+            hits = self._conn.execute(
+                "SELECT COALESCE(SUM(hit_count), 0) FROM cache"
+            ).fetchone()[0]
         db_size = self._db_path.stat().st_size if self._db_path.exists() else 0
 
         return {

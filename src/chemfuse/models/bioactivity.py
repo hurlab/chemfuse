@@ -65,6 +65,7 @@ class Bioactivity(BaseModel):
 
     # ChEMBL assay quality metadata (CF-E08)
     confidence_score: int | None = None        # 0-9 from ChEMBL (9=direct binding assay)
+    assay_chembl_id: str | None = None         # ChEMBL assay identifier (e.g., CHEMBL123456)
     assay_description: str | None = None       # free-text description of the assay
     data_validity_comment: str | None = None   # flags suspicious values from ChEMBL
 

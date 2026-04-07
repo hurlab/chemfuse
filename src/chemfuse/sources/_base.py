@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from chemfuse.models.compound import Compound
@@ -14,12 +14,22 @@ class SourceAdapter(ABC):
 
     All source adapters must implement this interface to be compatible
     with the ChemFuse source registry and search framework.
+
+    Supports ``async with`` context manager for resource cleanup.
     """
 
     # Must be set by subclasses
     name: str = ""
     base_url: str = ""
     rate_limit: float = 1.0  # requests per second
+
+    async def __aenter__(self) -> SourceAdapter:
+        return self
+
+    async def __aexit__(self, *args: Any) -> None:
+        http = getattr(self, "_http", None)
+        if http is not None:
+            await http.close()
 
     @abstractmethod
     async def search(

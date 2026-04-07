@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from html import escape
 from typing import Any
 
@@ -90,17 +91,16 @@ def _lookup_xref(identifier: str) -> tuple[dict[str, str] | None, str | None]:
         A tuple of (result_dict_or_None, error_message_or_None).
     """
     async def _run() -> dict[str, str] | None:
-        from chemfuse.sources.unichem import UniChemSource
-        src = UniChemSource()
-        async with src:
-            if identifier.isdigit():
-                return await src.map_identifiers(identifier, "pubchem")
-            elif identifier.upper().startswith("CHEMBL"):
-                return await src.map_identifiers(identifier, "chembl")
-            elif len(identifier) == 27 and "-" in identifier:
-                return await src.cross_reference(identifier)
-            else:
-                return await _resolve_via_pubchem(identifier, src)
+        from chemfuse.sources import registry
+        src = registry.get("unichem")
+        if identifier.isdigit():
+            return await src.map_identifiers(identifier, "pubchem")
+        elif identifier.upper().startswith("CHEMBL"):
+            return await src.map_identifiers(identifier, "chembl")
+        elif re.match(r'^[A-Z]{14}-[A-Z]{10}-[A-Z]$', identifier):
+            return await src.cross_reference(identifier)
+        else:
+            return await _resolve_via_pubchem(identifier, src)
 
     try:
         result = _run_async(_run())
@@ -112,20 +112,19 @@ def _lookup_xref(identifier: str) -> tuple[dict[str, str] | None, str | None]:
 async def _resolve_via_pubchem(identifier: str, unichem_src: Any) -> dict[str, str] | None:
     """Resolve identifier via PubChem then get cross-references."""
     try:
-        from chemfuse.sources.pubchem import PubChemSource
-        pubchem_src = PubChemSource()
-        async with pubchem_src:
-            compounds = await pubchem_src.search(identifier, query_type="name")
-            if not compounds:
-                compounds = await pubchem_src.search(identifier, query_type="smiles")
-            if compounds:
-                compound = compounds[0]
-                cid = compound.cid
-                if cid:
-                    mappings = await unichem_src.map_identifiers(str(cid), "pubchem")
-                    if mappings:
-                        mappings["pubchem"] = str(cid)
-                    return mappings
+        from chemfuse.sources import registry
+        pubchem_src = registry.get("pubchem")
+        compounds = await pubchem_src.search(identifier, query_type="name")
+        if not compounds:
+            compounds = await pubchem_src.search(identifier, query_type="smiles")
+        if compounds:
+            compound = compounds[0]
+            cid = compound.cid
+            if cid:
+                mappings = await unichem_src.map_identifiers(str(cid), "pubchem")
+                if mappings:
+                    mappings["pubchem"] = str(cid)
+                return mappings
     except Exception:
         pass
     return None

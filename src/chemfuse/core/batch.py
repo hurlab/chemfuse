@@ -142,13 +142,13 @@ async def batch_search_async(
 
     active_sources = sources or ["pubchem"]
     total = len(queries)
-    results: list[Compound] = []
     errors: list[dict[str, Any]] = []
     semaphore = asyncio.Semaphore(concurrency)
     completed = 0
 
-    async def search_single(query: str) -> None:
+    async def search_single(query: str) -> list[Compound]:
         nonlocal completed
+        found: list[Compound] = []
         async with semaphore:
             try:
                 query_type = _detect_query_type(query)
@@ -156,7 +156,7 @@ async def batch_search_async(
                     try:
                         adapter = registry.get(source_name)
                         source_results = await adapter.search(query, query_type)
-                        results.extend(source_results)
+                        found.extend(source_results)
                     except Exception as exc:
                         errors.append({
                             "query": query,
@@ -169,9 +169,12 @@ async def batch_search_async(
                 completed += 1
                 if progress_callback:
                     progress_callback(completed, total, query)
+        return found
 
-    tasks = [search_single(q) for q in queries]
-    await asyncio.gather(*tasks)
+    gathered = await asyncio.gather(*[search_single(q) for q in queries])
+    results: list[Compound] = []
+    for batch in gathered:
+        results.extend(batch)
 
     # Deduplicate by InChIKey or SMILES to avoid redundant results
     seen: set[str] = set()

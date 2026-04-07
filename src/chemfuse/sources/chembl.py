@@ -325,6 +325,8 @@ class ChEMBLAdapter(SourceAdapter):
         value_raw = act.get("standard_value") or act.get("value")
         value = _safe_float(value_raw)
 
+        assay_chembl_id = act.get("assay_chembl_id")
+
         # CF-E08: parse assay quality metadata
         confidence_score_raw = act.get("confidence_score")
         confidence_score: int | None = None
@@ -347,6 +349,7 @@ class ChEMBLAdapter(SourceAdapter):
             source="chembl",
             reference=reference,
             confidence_score=confidence_score,
+            assay_chembl_id=assay_chembl_id,
             assay_description=assay_description,
             data_validity_comment=data_validity_comment,
         )
@@ -362,4 +365,7 @@ class ChEMBLAdapter(SourceAdapter):
             return None
 
 
-__all__ = ["ChEMBLAdapter"]
+# backward compatibility alias
+ChEMBLSource = ChEMBLAdapter
+
+__all__ = ["ChEMBLAdapter", "ChEMBLSource"]

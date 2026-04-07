@@ -11,6 +11,7 @@ import logging
 from typing import Any
 
 from chemfuse._version import __version__
+from chemfuse.core._async import run_async as _run_sync
 from chemfuse.core.exceptions import NotFoundError, SourceError
 from chemfuse.models.bioactivity import BindingMeasurement, Bioactivity
 from chemfuse.models.collection import CompoundCollection
@@ -21,35 +22,6 @@ from chemfuse.models.target import TargetAssociation
 from chemfuse.sources import registry
 
 logger = logging.getLogger(__name__)
-
-
-def _run_sync(coro: Any) -> Any:
-    """Run an async coroutine synchronously.
-
-    Handles the common case where asyncio.run() fails because
-    the event loop is closed or stale from a previous call.
-    """
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_closed():
-            raise RuntimeError("closed")
-        if loop.is_running():
-            raise RuntimeError("running")
-        return loop.run_until_complete(coro)
-    except RuntimeError as exc:
-        exc_msg = str(exc).lower()
-        if (
-            "running" not in exc_msg
-            and "closed" not in exc_msg
-            and "no current event loop" not in exc_msg
-        ):
-            raise
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            return loop.run_until_complete(coro)
-        finally:
-            loop.close()
 
 
 def _merge_by_inchikey(compounds: list[Compound]) -> list[Compound]:
@@ -142,7 +114,7 @@ async def search_async(
     )
     # Attach warnings to collection for inspection by caller
     if warnings:
-        collection.__dict__["_warnings"] = warnings
+        collection.warnings = warnings
 
     return collection
 

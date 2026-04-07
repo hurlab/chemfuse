@@ -58,16 +58,19 @@ def render() -> None:
     search_clicked = st.button("Search", type="primary", use_container_width=True, key="search_btn")
 
     # Execute search
-    if search_clicked and query.strip():
-        sources = []
-        if use_pubchem:
-            sources.append("pubchem")
-        if use_chembl:
-            sources.append("chembl")
-        if not sources:
-            st.warning("Select at least one source.")
-            return
-        _execute_search(query.strip(), search_type, sources)
+    if search_clicked:
+        if not query.strip():
+            st.warning("Please enter a search query.")
+        else:
+            sources = []
+            if use_pubchem:
+                sources.append("pubchem")
+            if use_chembl:
+                sources.append("chembl")
+            if not sources:
+                st.warning("Select at least one source.")
+            else:
+                _execute_search(query.strip(), search_type, sources)
 
     # Display persisted results
     results = st.session_state.get("search_results", [])
@@ -125,21 +128,13 @@ def _fetch_results(
     warnings: list[str] = []
 
     async def _run() -> list[dict[str, Any]]:
+        from chemfuse.sources import registry
         collected: list[dict[str, Any]] = []
         for source_name in sources:
             try:
-                if source_name == "pubchem":
-                    from chemfuse.sources.pubchem import PubChemSource
-                    src = PubChemSource()
-                    async with src:
-                        compounds = await src.search(query, query_type=search_type)
-                    collected.extend(_compound_to_dict(c) for c in compounds)
-                elif source_name == "chembl":
-                    from chemfuse.sources.chembl import ChEMBLSource
-                    src = ChEMBLSource()
-                    async with src:
-                        compounds = await src.search(query, query_type=search_type)
-                    collected.extend(_compound_to_dict(c) for c in compounds)
+                src = registry.get(source_name)
+                compounds = await src.search(query, query_type=search_type)
+                collected.extend(_compound_to_dict(c) for c in compounds)
             except Exception as exc:
                 # Collect warnings instead of calling st.warning (C6)
                 warnings.append(f"Source '{source_name}' error: {exc}")

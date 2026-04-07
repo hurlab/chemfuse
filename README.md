@@ -109,7 +109,7 @@ results.to_excel("aspirin.xlsx")
 ```bash
 # Search
 chemfuse search aspirin
-chemfuse search aspirin --sources pubchem chembl --format json
+chemfuse search aspirin -s pubchem -s chembl --format json
 
 # Compound profile
 chemfuse profile aspirin --admet --druglikeness

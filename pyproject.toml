@@ -81,6 +81,9 @@ packages = ["src/chemfuse"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 addopts = "--tb=short"
+filterwarnings = [
+    "ignore:coroutine '.*\\._run' was never awaited:RuntimeWarning",
+]
 
 [tool.ruff]
 target-version = "py311"

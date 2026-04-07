@@ -2,21 +2,20 @@
 
 from __future__ import annotations
 
-import asyncio
-import concurrent.futures
 import hashlib
 import json
 from typing import Any
 
 import pandas as pd
 
+from chemfuse.core._async import run_async
+
 
 def _run_async(coro: object) -> object:
     """Run an async coroutine safely from a synchronous context.
 
-    Handles both cases: when no event loop is running (standard case) and
-    when an event loop is already running (e.g. inside Jupyter or certain
-    async frameworks) by delegating to a thread pool executor.
+    Delegates to the canonical :func:`chemfuse.core._async.run_async`
+    implementation.
 
     Args:
         coro: An awaitable coroutine object to execute.
@@ -24,15 +23,7 @@ def _run_async(coro: object) -> object:
     Returns:
         The result returned by the coroutine.
     """
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = None
-
-    if loop and loop.is_running():
-        with concurrent.futures.ThreadPoolExecutor() as pool:
-            return pool.submit(asyncio.run, coro).result()
-    return asyncio.run(coro)
+    return run_async(coro)
 
 
 def _find_smiles_column(columns: list[str] | pd.Index) -> str | None:

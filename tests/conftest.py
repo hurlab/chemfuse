@@ -8,6 +8,23 @@ from chemfuse.models.collection import CompoundCollection
 from chemfuse.models.compound import Compound, CompoundProperties
 
 
+@pytest.fixture(autouse=True)
+def _reset_registry_adapters():
+    """Reset cached adapter instances between tests.
+
+    The registry injects a shared Cache into adapters. Cached API responses
+    from previous tests (or real calls) can bypass respx mocks. Clearing
+    cached instances and using a disabled cache ensures test isolation.
+    """
+    from chemfuse.core.cache import Cache
+    from chemfuse.sources import registry
+    registry._adapters.clear()
+    registry._cache_instance = Cache(enabled=False)
+    yield
+    registry._adapters.clear()
+    registry._cache_instance = None
+
+
 @pytest.fixture
 def aspirin_props() -> CompoundProperties:
     """CompoundProperties for aspirin."""

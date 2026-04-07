@@ -139,7 +139,7 @@ def _rule_cyp1a2_inhibition(mol: Any) -> ADMETPrediction:
     mw = Descriptors.MolWt(mol)
     aromatic_rings = rdMolDescriptors.CalcNumAromaticRings(mol)
     # Planarity (>= 3 fused/aromatic rings) is the primary CYP1A2 driver
-    risk = sum([aromatic_rings >= 3, mw < 400, logp < 3]) / 3.0
+    risk = sum([aromatic_rings >= 3, mw < 400, 1.5 < logp < 3.5]) / 3.0
     category = "high" if risk >= 0.67 else ("medium" if risk >= 0.33 else "low")
     return _make_prediction(
         "cyp1a2_inhibition", round(risk, 3),
@@ -151,13 +151,16 @@ def _rule_cyp2c9_inhibition(mol: Any) -> ADMETPrediction:
     """CYP2C9 inhibition risk.
 
     CYP2C9 prefers lipophilic, acidic substrates of moderate-to-large size.
-    Risk factors: LogP > 2.5, MW > 300, HBA >= 2.
+    Risk factors: LogP > 2.5, MW > 300, presence of acidic moiety (carboxylic
+    acid or sulfonamide).
     Ref: Miners & Birkett Br J Clin Pharmacol 1998.
     """
     logp = Descriptors.MolLogP(mol)
     mw = Descriptors.MolWt(mol)
-    hba = rdMolDescriptors.CalcNumHBA(mol)
-    risk = sum([logp > 2.5, mw > 300, hba >= 2]) / 3.0
+    # CYP2C9 prefers weak acid substrates (carboxylic acids, sulfonamides)
+    acid_smarts = Chem.MolFromSmarts("[CX3](=O)[OX1H0-,OX2H1]")
+    has_acid = bool(acid_smarts and mol.GetSubstructMatches(acid_smarts))
+    risk = sum([logp > 2.5, mw > 300, has_acid]) / 3.0
     category = "high" if risk >= 0.67 else ("medium" if risk >= 0.33 else "low")
     return _make_prediction(
         "cyp2c9_inhibition", round(risk, 3),
@@ -344,7 +347,7 @@ def _rule_ames(mol: Any) -> ADMETPrediction:
     - Nitroso group: [N]=O (not part of nitro)
     """
     # Aromatic amine: N-H bonded directly to aromatic carbon
-    aro_amine_smarts = Chem.MolFromSmarts("[NH2,NH1;!$(N~[!c])]c")
+    aro_amine_smarts = Chem.MolFromSmarts("[NH2,NH1;!$(NC=O);!$(NS(=O)=O)]c")
     aromatic_amine = bool(aro_amine_smarts and mol.GetSubstructMatches(aro_amine_smarts))
 
     # Nitro group (ionic and neutral representations)
@@ -381,7 +384,7 @@ def _rule_lipophilicity(mol: Any) -> ADMETPrediction:
     logp = Descriptors.MolLogP(mol)
     category = "high" if logp > 5 else ("medium" if logp > 1 else "low")
     return _make_prediction(
-        "lipophilicity", round(logp, 3), unit="log D",
+        "lipophilicity", round(logp, 3), unit="cLogP",
         confidence=0.75, method="rule-based", category=category,
     )
 

@@ -8,25 +8,8 @@ from pathlib import Path
 
 import click
 
+from chemfuse.cli._utils import _validate_output_path
 from chemfuse.core.exceptions import NotFoundError, SourceError
-
-
-def _validate_output_path(path: Path) -> Path:
-    """Validate output path is safe.
-
-    Args:
-        path: Output file path.
-
-    Returns:
-        Resolved path.
-
-    Raises:
-        click.BadParameter: If the path contains traversal components.
-    """
-    resolved = path.resolve()
-    if ".." in path.parts:
-        raise click.BadParameter(f"Path traversal not allowed: {path}")
-    return resolved
 
 
 @click.command("search")
@@ -46,13 +29,7 @@ def _validate_output_path(path: Path) -> Path:
     multiple=True,
     default=["pubchem"],
     show_default=True,
-    help="Source database(s) to search. Can be specified multiple times.",
-)
-@click.option(
-    "--sources",
-    "sources_csv",
-    default=None,
-    help="Comma-separated source names (e.g., pubchem,chembl). Overrides --source.",
+    help="Source database(s) to search. Can be specified multiple times (e.g., -s pubchem -s chembl).",
 )
 @click.option(
     "--limit",
@@ -82,7 +59,6 @@ def search_cmd(
     query: str,
     query_type: str,
     sources: tuple[str, ...],
-    sources_csv: str | None,
     limit: int,
     output: str | None,
     fmt: str,
@@ -101,13 +77,6 @@ def search_cmd(
 
         chemfuse search C9H8O4 --type formula
     """
-    # Resolve sources: --sources CSV overrides --source flag
-    effective_sources: list[str]
-    if sources_csv is not None:
-        effective_sources = [s.strip() for s in sources_csv.split(",") if s.strip()]
-    else:
-        effective_sources = list(sources)
-
     try:
         from chemfuse import search_async
         from chemfuse.cli._async import _run_async
@@ -115,7 +84,7 @@ def search_cmd(
         collection = _run_async(
             search_async(
                 query,
-                sources=effective_sources,
+                sources=list(sources),
                 query_type=query_type,
                 limit=limit,
             )

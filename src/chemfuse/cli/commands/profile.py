@@ -91,11 +91,10 @@ def profile_cmd(
         binding = True
 
     try:
-        import asyncio
-
         from chemfuse import get_async
+        from chemfuse.cli._async import _run_async
 
-        compound = asyncio.run(get_async(identifier, source=source))
+        compound = _run_async(get_async(identifier, source=source))
     except NotFoundError as e:
         click.echo(f"Not found: {e}", err=True)
         sys.exit(1)
@@ -110,8 +109,8 @@ def profile_cmd(
     # Perform enrichment if requested
     if patents or targets or binding:
         try:
-            import asyncio
-            asyncio.run(compound.enrich(patents=patents, targets=targets, binding=binding))
+            from chemfuse.cli._async import _run_async
+            _run_async(compound.enrich(patents=patents, targets=targets, binding=binding))
         except Exception as e:
             click.echo(f"Enrichment warning: {e}", err=True)
 
@@ -120,11 +119,10 @@ def profile_cmd(
     if similar and compound.smiles:
         click.echo("\nFinding similar compounds...")
         try:
-            import asyncio
-
             from chemfuse import find_similar_async
+            from chemfuse.cli._async import _run_async
 
-            similar_collection = asyncio.run(
+            similar_collection = _run_async(
                 find_similar_async(
                     compound.smiles,
                     threshold=threshold,

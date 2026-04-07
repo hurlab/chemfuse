@@ -29,12 +29,7 @@ _SD_PROP_MAP: dict[str, str] = {
     "fsp3": "fsp3",
 }
 
-# Mapping of CompoundProperties field names to SD tag names for writing
-_PROP_TO_SD: dict[str, str] = {v: k for k, v in _SD_PROP_MAP.items() if v not in
-                                 {_SD_PROP_MAP[k2] for k2 in _SD_PROP_MAP if k2 != k
-                                  and _SD_PROP_MAP[k2] == v}}
-
-# Use canonical SD tag names for writing
+# Canonical SD tag names for writing
 _PROP_TO_SD_CANONICAL: dict[str, str] = {
     "molecular_weight": "MW",
     "exact_mass": "ExactMass",
