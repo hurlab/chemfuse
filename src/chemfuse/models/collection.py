@@ -861,3 +861,89 @@ class CompoundCollection(BaseModel):
             fp_type=fp_type,
             cliff_threshold=cliff_thresh,
         )
+
+    # ------------------------------------------------------------------
+    # MMP methods (Task 2)
+    # ------------------------------------------------------------------
+
+    def generate_sar_report(
+        self,
+        activity_type: str = "IC50",
+        target: str | None = None,
+        format: str = "markdown",
+    ) -> str:
+        """Generate a SAR report. See chemfuse.analyze.report for details.
+
+        Args:
+            activity_type: Activity type to analyze (IC50, Ki, etc.).
+            target: Optional target name to filter bioactivities.
+            format: Output format ("markdown" or "text").
+
+        Returns:
+            Formatted SAR report as a string.
+        """
+        from chemfuse.analyze.report import generate_sar_report as _gen
+        return _gen(self, activity_type=activity_type, target=target, format=format)
+
+    def find_matched_pairs(
+        self,
+        activity_type: str = "IC50",
+        min_heavy_atoms_core: int = 5,
+        max_heavy_atoms_transform: int = 13,
+    ) -> pd.DataFrame:
+        """Find matched molecular pairs in this collection.
+
+        A matched molecular pair is two compounds that differ by a single
+        structural transformation (one R-group change on a shared core).
+        Activity values are extracted from the first bioactivity record that
+        matches ``activity_type``.
+
+        Args:
+            activity_type: Activity type to extract (e.g., ``"IC50"``, ``"Ki"``).
+                Used to look up activity values from compound bioactivity data.
+            min_heavy_atoms_core: Minimum heavy atoms required in the shared core.
+            max_heavy_atoms_transform: Maximum heavy atoms in the transformation.
+
+        Returns:
+            DataFrame with columns: smiles_a, smiles_b, core_smarts,
+            transform_a, transform_b, activity_a, activity_b, activity_delta.
+            activity_delta is None when no bioactivity data is available.
+
+        Raises:
+            OptionalDependencyError: If RDKit is not installed.
+        """
+        from chemfuse.analyze.mmp import find_matched_pairs as _find_mmp
+
+        smiles_list = [c.smiles for c in self.compounds if c.smiles]
+        compound_index = [i for i, c in enumerate(self.compounds) if c.smiles]
+
+        activities: list[float] | None = None
+        activity_values: list[float | None] = []
+
+        for idx in compound_index:
+            compound = self.compounds[idx]
+            value: float | None = None
+            if hasattr(compound, "bioactivities") and compound.bioactivities:
+                for bio in compound.bioactivities:
+                    bio_type = getattr(bio, "activity_type", None) or getattr(bio, "type", None)
+                    if bio_type and activity_type.lower() in str(bio_type).lower():
+                        v = getattr(bio, "value", None) or getattr(bio, "value_nm", None)
+                        if v is not None:
+                            try:
+                                value = float(v)
+                                break
+                            except (TypeError, ValueError):
+                                pass
+            activity_values.append(value)
+
+        # Only pass activities list when at least some values are available
+        if any(v is not None for v in activity_values):
+            # Replace None with NaN-safe float; MMP module handles None gracefully
+            activities = [v if v is not None else float("nan") for v in activity_values]
+
+        return _find_mmp(
+            smiles_list=smiles_list,
+            activities=activities,
+            min_heavy_atoms_core=min_heavy_atoms_core,
+            max_heavy_atoms_transform=max_heavy_atoms_transform,
+        )

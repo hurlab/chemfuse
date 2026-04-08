@@ -182,8 +182,8 @@ class TestMultiSourceSearch:
         assert "chembl" in called_sources
 
     @pytest.mark.asyncio
-    async def test_search_no_inchikey_compounds_not_merged(self) -> None:
-        """Compounds without InChIKey are not merged."""
+    async def test_search_same_smiles_compounds_merged(self) -> None:
+        """Compounds with same SMILES are merged via standardization-derived InChIKey."""
         c1 = Compound(smiles="CC", sources=["pubchem"])
         c2 = Compound(smiles="CC", sources=["chembl"])
 
@@ -197,8 +197,10 @@ class TestMultiSourceSearch:
 
             collection = await cf.search_async("test", sources=["pubchem", "chembl"])
 
-        # Both kept since no InChIKey to deduplicate on
-        assert len(collection) == 2
+        # Merged: tautomer-aware dedup fills InChIKey from SMILES
+        assert len(collection) == 1
+        assert "pubchem" in collection[0].sources
+        assert "chembl" in collection[0].sources
 
 
 # --- Cross-reference tests ---

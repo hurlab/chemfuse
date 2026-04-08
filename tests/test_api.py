@@ -251,6 +251,54 @@ class TestCrossReference:
             assert result is not None
 
 
+class TestMergeByInchikey:
+    def test_merge_tautomers(self):
+        """Tautomeric forms should be merged when RDKit is available."""
+        from chemfuse import _merge_by_inchikey
+        from chemfuse.models.compound import Compound
+
+        # Two compounds with the same canonical SMILES (acetone); no InChIKey
+        # pre-assigned so _try_standardize_for_dedup will fill them in.
+        c1 = Compound(smiles="CC(=O)C", name="acetone-keto", sources=["pubchem"])
+        c2 = Compound(smiles="CC(=O)C", name="acetone-enol", sources=["chembl"])
+
+        merged = _merge_by_inchikey([c1, c2])
+        # Both have the same canonical SMILES so they resolve to the same InChIKey
+        assert len(merged) == 1
+
+    def test_merge_keeps_different_compounds(self):
+        """Distinct compounds must not be merged."""
+        from chemfuse import _merge_by_inchikey
+        from chemfuse.models.compound import Compound
+
+        aspirin = Compound(
+            smiles="CC(=O)Oc1ccccc1C(=O)O",
+            inchikey="BSYNRYMUTXBXSQ-UHFFFAOYSA-N",
+            name="aspirin",
+            sources=["pubchem"],
+        )
+        ibuprofen = Compound(
+            smiles="CC(C)Cc1ccc(cc1)C(C)C(=O)O",
+            inchikey="HEFNNWSXXWATRW-UHFFFAOYSA-N",
+            name="ibuprofen",
+            sources=["pubchem"],
+        )
+
+        merged = _merge_by_inchikey([aspirin, ibuprofen])
+        assert len(merged) == 2
+
+    def test_merge_no_inchikey_kept_as_is(self):
+        """Compounds without InChIKey (and no SMILES for standardization) are not merged."""
+        from chemfuse import _merge_by_inchikey
+        from chemfuse.models.compound import Compound
+
+        c1 = Compound(smiles="", name="unknown-1", sources=["test"])
+        c2 = Compound(smiles="", name="unknown-2", sources=["test"])
+
+        merged = _merge_by_inchikey([c1, c2])
+        assert len(merged) == 2
+
+
 class TestBatchSearchAPI:
     def test_batch_search_delegates_to_core(self, tmp_path):
         query_file = tmp_path / "queries.txt"

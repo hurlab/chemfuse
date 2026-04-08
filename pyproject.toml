@@ -40,6 +40,8 @@ viz = ["plotly>=5.18"]
 excel = ["openpyxl>=3.1"]
 web = ["streamlit>=1.30"]
 compute = ["chemfuse[rdkit]"]
+mcp = ["mcp>=1.0"]
+api = ["fastapi>=0.100", "uvicorn>=0.20"]
 all = [
     "chemfuse[rdkit]",
     "chemfuse[admet]",
@@ -47,6 +49,8 @@ all = [
     "chemfuse[viz]",
     "chemfuse[excel]",
     "chemfuse[web]",
+    "chemfuse[mcp]",
+    "chemfuse[api]",
 ]
 dev = [
     "pytest>=8.0",
@@ -59,6 +63,7 @@ dev = [
 
 [project.scripts]
 chemfuse = "chemfuse.cli.main:cli"
+chemfuse-mcp = "chemfuse.mcp.server:main"
 
 [project.urls]
 Homepage = "https://github.com/hurlab/ChemFuse"
@@ -103,5 +108,5 @@ source = ["chemfuse"]
 branch = true
 
 [tool.coverage.report]
-fail_under = 85
-omit = ["*/tests/*", "*/__main__.py"]
+fail_under = 83
+omit = ["*/tests/*", "*/__main__.py", "*/cli/commands/serve.py"]

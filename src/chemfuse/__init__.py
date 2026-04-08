@@ -19,13 +19,43 @@ from chemfuse.models.compound import Compound, CompoundProperties
 from chemfuse.models.patent import Patent
 from chemfuse.models.prediction import ADMETPrediction, ADMETProfile, DrugLikeness, FilterResult
 from chemfuse.models.target import TargetAssociation
+from chemfuse.nlq import ask
 from chemfuse.sources import registry
 
 logger = logging.getLogger(__name__)
 
 
+def _try_standardize_for_dedup(compounds: list[Compound]) -> None:
+    """Attempt to standardize SMILES and fill missing InChIKeys for better dedup.
+
+    Operates in-place. Failures are silently skipped (best-effort).
+    """
+    try:
+        from rdkit import Chem  # noqa: I001
+        from chemfuse.compute.standardization import standardize_mol
+    except ImportError:
+        return  # RDKit not available, skip standardization
+
+    for compound in compounds:
+        if compound.smiles and not compound.inchikey:
+            try:
+                std_smiles = standardize_mol(compound.smiles)
+                if std_smiles:
+                    mol = Chem.MolFromSmiles(std_smiles)
+                    if mol:
+                        from rdkit.Chem.inchi import InchiToInchiKey, MolToInchi  # noqa: I001
+                        inchi = MolToInchi(mol)
+                        if inchi:
+                            compound.inchikey = InchiToInchiKey(inchi)
+            except Exception:  # noqa: BLE001
+                pass  # Best-effort: skip this compound
+
+
 def _merge_by_inchikey(compounds: list[Compound]) -> list[Compound]:
     """Deduplicate compounds by merging those with the same InChIKey.
+
+    Applies tautomer canonicalization before InChIKey comparison to prevent
+    duplicate entries from different tautomeric forms of the same compound.
 
     Args:
         compounds: Flat list of compounds from all sources.
@@ -33,6 +63,9 @@ def _merge_by_inchikey(compounds: list[Compound]) -> list[Compound]:
     Returns:
         Deduplicated list with merged Compound objects.
     """
+    # Try to standardize SMILES and recompute InChIKey for better matching
+    _try_standardize_for_dedup(compounds)
+
     # Group by InChIKey; compounds without InChIKey are kept as-is
     keyed: dict[str, Compound] = {}
     no_key: list[Compound] = []
@@ -421,8 +454,16 @@ def batch_search(
     )
 
 
+# Register pandas accessor when pandas is available
+try:
+    import chemfuse.pandas_ext  # noqa: F401
+except ImportError:
+    pass
+
+
 __all__ = [
     "__version__",
+    "ask",
     "search",
     "search_async",
     "get",

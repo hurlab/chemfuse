@@ -1,4 +1,4 @@
-"""ChemFuse analysis tools: clustering, chemical space, SAR, similarity, scaffolds, diversity, and landscape."""
+"""ChemFuse analysis tools: clustering, chemical space, SAR, similarity, scaffolds, diversity, landscape, and MMP."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from chemfuse.analyze.clustering import (
 )
 from chemfuse.analyze.diversity import diversity_score, maxmin_pick
 from chemfuse.analyze.landscape import sar_landscape
+from chemfuse.analyze.mmp import find_matched_pairs, summarize_transformations
 from chemfuse.analyze.rgroup import decompose_rgroups, rgroup_sar_table
 from chemfuse.analyze.sar import build_similarity_network, detect_activity_cliffs
 from chemfuse.analyze.scaffolds import (
@@ -50,4 +51,6 @@ __all__ = [
     "maxmin_pick",
     "diversity_score",
     "sar_landscape",
+    "find_matched_pairs",
+    "summarize_transformations",
 ]

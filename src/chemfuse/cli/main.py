@@ -8,6 +8,7 @@ from chemfuse._version import __version__
 from chemfuse.cli.commands.profile import profile_cmd
 from chemfuse.cli.commands.screen import screen_cmd
 from chemfuse.cli.commands.search import search_cmd
+from chemfuse.cli.commands.serve import serve
 from chemfuse.cli.commands.web import web_cmd
 from chemfuse.cli.commands.xref import xref_cmd
 
@@ -36,6 +37,7 @@ cli.add_command(screen_cmd)
 cli.add_command(profile_cmd)
 cli.add_command(xref_cmd)
 cli.add_command(web_cmd)
+cli.add_command(serve)
 
 
 if __name__ == "__main__":
