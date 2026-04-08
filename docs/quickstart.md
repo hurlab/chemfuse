@@ -4,22 +4,16 @@ Get started with ChemFuse in 5 minutes.
 
 ## Installation
 
-Install ChemFuse using pip:
+Install ChemFuse with all optional dependencies:
+
+```bash
+pip install chemfuse[all]
+```
+
+Or install with only the core dependencies:
 
 ```bash
 pip install chemfuse
-```
-
-For Docker users:
-
-```bash
-docker run -it chemfuse/chemfuse:latest /bin/bash
-```
-
-For R users:
-
-```R
-install.packages("chemfuse", repos = "https://hurlab.r-universe.dev")
 ```
 
 ## 1. Your First Search (1 minute)
@@ -32,103 +26,108 @@ import chemfuse as cf
 # Search for aspirin
 results = cf.search("aspirin", sources=["pubchem", "chembl"])
 print(f"Found {len(results)} compounds")
+
+# Access the first compound
+compound = results[0]
+print(compound.name)
+print(compound.properties.molecular_weight)
+print(compound.smiles)
 ```
 
 ## 2. Compound Profile (2 minutes)
 
-Get detailed information about a single compound:
+Get detailed information about a specific compound:
 
 ```python
 import chemfuse as cf
 
-# Get compound by SMILES
-compound = cf.get("CC(=O)Oc1ccccc1C(=O)O")  # Aspirin
+# Get compound by PubChem CID
+compound = cf.get("2244")  # Aspirin CID
 
-# View basic properties
-print(compound.name)
-print(compound.molecular_weight)
-print(compound.smiles)
+# Compute molecular descriptors (requires RDKit)
+descriptors = compound.compute_descriptors()
+print(f"Computed {len(descriptors)} descriptors")
 
-# Get ADMET prediction
-admet = compound.predict_admet()
-print(f"Predicted LogP: {admet['LogP']:.2f}")
+# Check drug-likeness (5 standard filters + PAINS + QED)
+dl = compound.check_drug_likeness()
+print(f"Lipinski: {'Pass' if dl.lipinski.pass_filter else 'Fail'}")
+print(f"Veber: {'Pass' if dl.veber.pass_filter else 'Fail'}")
+if dl.qed:
+    print(f"QED Score: {dl.qed['qed']:.2f}")
 
-# Check drug-likeness
-filters = compound.check_drug_likeness()
-print(f"Lipinski Pass: {filters['lipinski']}")
+# Predict ADMET properties
+from chemfuse.compute.admet import predict_admet
+profile = predict_admet(compound.smiles)
+print(f"ADMET Score: {profile.overall_score:.2f}")
+print(f"Predictions: {len(profile.predictions)}")
 ```
 
 ## 3. Batch Screening (2 minutes)
 
-Screen multiple compounds for drug-likeness:
+Screen a collection of compounds:
 
 ```python
 import chemfuse as cf
 
-# Create a list of SMILES strings
-smiles_list = [
-    "CC(=O)Oc1ccccc1C(=O)O",  # Aspirin
-    "CC(C)Cc1ccc(cc1)C(C)C(=O)O",  # Ibuprofen
-    "CC(=O)Nc1ccc(O)cc1",  # Acetaminophen
-]
+# Search for multiple compounds
+results = cf.search("aspirin", sources=["pubchem"])
 
-# Batch search
-compounds = cf.batch_search(smiles_list, source="pubchem")
+# Compute properties for all compounds
+results.compute_all(descriptors=True, druglikeness=True)
 
-# Filter for drug-likeness
-for compound in compounds:
-    filters = compound.check_drug_likeness()
-    if filters["lipinski"]:
-        print(f"{compound.name}: Lipinski Pass ✓")
+# Filter by drug-likeness
+druglike = results.filter_by_druglikeness(lipinski=True, veber=True)
+print(f"Drug-like compounds: {len(druglike)} / {len(results)}")
+
+# Filter by property ranges
+filtered = results.filter(mw_range=(150, 500), logp_range=(-1, 5))
+print(f"Filtered: {len(filtered)} compounds")
 ```
 
-## 4. Cross-Database Enrichment (optional)
+## 4. Cross-Database Enrichment
 
 Combine data from multiple sources:
 
 ```python
 import chemfuse as cf
 
-# Get compound from PubChem
-compound = cf.search("caffeine", source="pubchem")[0]
+# Search and get a compound
+results = cf.search("caffeine", sources=["pubchem"])
+compound = results[0]
 
-# Enrich with ChEMBL bioactivity
-chembl_data = compound.cross_reference(target_db="chembl")
-if chembl_data:
-    print(f"ChEMBL bioactivities: {len(chembl_data)} records")
+# Cross-reference across databases
+enriched = cf.cross_reference(compound, target_sources=["chembl"])
+print(f"ChEMBL ID: {enriched.chembl_id}")
 
-# Get UniChem cross-references
-xrefs = compound.find_cross_references()
+# Map identifiers via UniChem
+xrefs = cf.map_identifiers(cid=compound.cid)
 for db, identifier in xrefs.items():
     print(f"{db}: {identifier}")
 ```
 
 ## 5. Export Results
 
-Save your results:
+Save your results in multiple formats:
 
 ```python
 import chemfuse as cf
 
 # Search and collect results
-compounds = cf.search("aspirin OR ibuprofen", source="pubchem", limit=20)
+results = cf.search("aspirin", sources=["pubchem"])
 
 # Export to CSV
-cf.export(compounds, "results.csv")
+results.to_csv("results.csv")
 
-# Export to Excel with formulas
-cf.export(compounds, "results.xlsx", include_descriptors=True)
+# Export to Excel
+results.to_excel("results.xlsx")
 
 # Export to JSON
-cf.export(compounds, "results.json")
+results.to_json("results.json")
+
+# Export to pandas DataFrame
+df = results.to_dataframe()
+print(df.head())
 ```
-
-## Next Steps
-
-- Read the [API Reference](api-reference.md) for detailed function documentation
-- Explore the [CLI Reference](cli-reference.md) for command-line usage
-- Check out the [Jupyter Notebooks](../notebooks/) for advanced examples
-- Visit the [Web Dashboard](quickstart.md#web-dashboard) for interactive exploration
 
 ## Web Dashboard
 
@@ -145,16 +144,23 @@ Then open your browser to `http://localhost:8501` to:
 - Explore chemical space
 - Download results
 
+## Next Steps
+
+- Read the [API Reference](api-reference.md) for detailed function documentation
+- Explore the [CLI Reference](cli-reference.md) for command-line usage
+- Check out the [Jupyter Notebooks](../notebooks/) for advanced examples
+
 ## Troubleshooting
 
-**Import Error**: Make sure ChemFuse is installed: `pip install chemfuse`
+**Import Error**: Make sure ChemFuse is installed: `pip install chemfuse[all]`
 
-**Connection Timeout**: ChemFuse uses cached data by default. Check your internet connection for first queries.
+**RDKit Not Found**: Install with: `pip install chemfuse[rdkit]`
 
-**ADMET Prediction Unavailable**: The ML model requires an internet connection. Falls back to rule-based prediction automatically.
+**Connection Timeout**: ChemFuse caches API responses for 7 days. Check your internet connection for first queries.
+
+**ADMET Prediction**: Uses admet-ai ML models when installed, falls back to rule-based heuristics automatically.
 
 ## Support
 
 - Report issues on [GitHub Issues](https://github.com/hurlab/ChemFuse/issues)
-- Ask questions on [GitHub Discussions](https://github.com/hurlab/ChemFuse/discussions)
 - Read the full [Documentation](../README.md)

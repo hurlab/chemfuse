@@ -314,7 +314,7 @@ def _run_with_progress(
                 p.add_task(description, total=None)
                 func()  # type: ignore[operator]
             return
-        except Exception:
+        except ImportError:
             pass
     func()  # type: ignore[operator]
 
@@ -342,7 +342,7 @@ def _print_summary(collection: object, use_rich: bool, console: object) -> None:
 
             console.print(table)  # type: ignore[union-attr]
             return
-        except Exception:
+        except ImportError:
             pass
 
     for i, compound in enumerate(collection, 1):  # type: ignore[call-overload]

@@ -30,7 +30,7 @@ def render() -> None:
 
     # Parse uploaded file
     try:
-        df_input = pd.read_csv(uploaded_file)
+        df_input = pd.read_csv(uploaded_file, nrows=10_000)
     except Exception as exc:
         st.error(f"Failed to read CSV: {exc}")
         return

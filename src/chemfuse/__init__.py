@@ -445,4 +445,6 @@ __all__ = [
     "DrugLikeness",
     "ADMETProfile",
     "ADMETPrediction",
+    "NotFoundError",
+    "SourceError",
 ]

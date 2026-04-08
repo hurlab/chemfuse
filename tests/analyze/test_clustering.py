@@ -43,12 +43,12 @@ class TestButinaClustering:
         with _patch_rdkit(True), \
              patch("chemfuse.analyze.clustering.Chem") as mock_chem, \
              patch("chemfuse.analyze.clustering.DataStructs") as mock_ds, \
-             patch("chemfuse.analyze.clustering.AllChem") as mock_allchem, \
+             patch("chemfuse.analyze.clustering._MORGAN_GEN") as mock_morgan_gen, \
              patch("chemfuse.analyze.clustering.Butina") as mock_butina:
 
             mol = MagicMock()
             mock_chem.MolFromSmiles.return_value = mol
-            mock_allchem.GetMorganFingerprintAsBitVect.return_value = _make_fp_mock()
+            mock_morgan_gen.GetFingerprint.return_value = _make_fp_mock()
             mock_ds.TanimotoSimilarity.return_value = 0.3
 
             # Return clusters: cluster 0 has members [0,1,2,3,4]
@@ -64,12 +64,12 @@ class TestButinaClustering:
         with _patch_rdkit(True), \
              patch("chemfuse.analyze.clustering.Chem") as mock_chem, \
              patch("chemfuse.analyze.clustering.DataStructs") as mock_ds, \
-             patch("chemfuse.analyze.clustering.AllChem") as mock_allchem, \
+             patch("chemfuse.analyze.clustering._MORGAN_GEN") as mock_morgan_gen, \
              patch("chemfuse.analyze.clustering.Butina") as mock_butina:
 
             mol = MagicMock()
             mock_chem.MolFromSmiles.return_value = mol
-            mock_allchem.GetMorganFingerprintAsBitVect.return_value = _make_fp_mock()
+            mock_morgan_gen.GetFingerprint.return_value = _make_fp_mock()
             mock_ds.TanimotoSimilarity.return_value = 0.2
             mock_butina.ClusterData.return_value = [(0, 1, 2, 3, 4),]
 
@@ -89,11 +89,11 @@ class TestButinaClustering:
         """butina_clustering with single compound returns [0]."""
         with _patch_rdkit(True), \
              patch("chemfuse.analyze.clustering.Chem") as mock_chem, \
-             patch("chemfuse.analyze.clustering.AllChem") as mock_allchem:
+             patch("chemfuse.analyze.clustering._MORGAN_GEN") as mock_morgan_gen:
 
             mol = MagicMock()
             mock_chem.MolFromSmiles.return_value = mol
-            mock_allchem.GetMorganFingerprintAsBitVect.return_value = _make_fp_mock()
+            mock_morgan_gen.GetFingerprint.return_value = _make_fp_mock()
 
             from chemfuse.analyze import clustering
             labels = clustering.butina_clustering(["CCO"])
@@ -124,14 +124,14 @@ class TestKMeansClustering:
         with _patch_rdkit(True), _patch_sklearn(True), \
              patch("chemfuse.analyze.clustering.Chem") as mock_chem, \
              patch("chemfuse.analyze.clustering.DataStructs") as mock_ds, \
-             patch("chemfuse.analyze.clustering.AllChem") as mock_allchem, \
+             patch("chemfuse.analyze.clustering._MORGAN_GEN") as mock_morgan_gen, \
              patch("chemfuse.analyze.clustering.MACCSkeys"), \
              patch("chemfuse.analyze.clustering.KMeans", return_value=mock_km):
 
             mol = MagicMock()
             mock_chem.MolFromSmiles.return_value = mol
             fp = MagicMock()
-            mock_allchem.GetMorganFingerprintAsBitVect.return_value = fp
+            mock_morgan_gen.GetFingerprint.return_value = fp
             mock_ds.ConvertToNumpyArray = lambda fp, arr: None
 
             from chemfuse.analyze import clustering
@@ -147,13 +147,13 @@ class TestKMeansClustering:
         with _patch_rdkit(True), _patch_sklearn(True), \
              patch("chemfuse.analyze.clustering.Chem") as mock_chem, \
              patch("chemfuse.analyze.clustering.DataStructs") as mock_ds, \
-             patch("chemfuse.analyze.clustering.AllChem") as mock_allchem, \
+             patch("chemfuse.analyze.clustering._MORGAN_GEN") as mock_morgan_gen, \
              patch("chemfuse.analyze.clustering.KMeans", return_value=mock_km):
 
             mol = MagicMock()
             mock_chem.MolFromSmiles.return_value = mol
             fp = MagicMock()
-            mock_allchem.GetMorganFingerprintAsBitVect.return_value = fp
+            mock_morgan_gen.GetFingerprint.return_value = fp
             mock_ds.ConvertToNumpyArray = lambda fp, arr: None
 
             from chemfuse.analyze import clustering
@@ -191,11 +191,11 @@ class TestSilhouetteScore:
              patch("chemfuse.analyze.clustering.silhouette_score", return_value=0.42), \
              patch("chemfuse.analyze.clustering.Chem") as mock_chem, \
              patch("chemfuse.analyze.clustering.DataStructs") as mock_ds, \
-             patch("chemfuse.analyze.clustering.AllChem") as mock_allchem:
+             patch("chemfuse.analyze.clustering._MORGAN_GEN") as mock_morgan_gen:
 
             mol = MagicMock()
             mock_chem.MolFromSmiles.return_value = mol
-            mock_allchem.GetMorganFingerprintAsBitVect.return_value = MagicMock()
+            mock_morgan_gen.GetFingerprint.return_value = MagicMock()
             mock_ds.ConvertToNumpyArray = lambda fp, arr: None
 
             from chemfuse.analyze import clustering

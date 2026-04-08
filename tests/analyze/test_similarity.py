@@ -36,12 +36,12 @@ class TestTanimotoSimilarity:
         with _patch_rdkit(True), \
              patch("chemfuse.analyze.similarity.Chem") as mock_chem, \
              patch("chemfuse.analyze.similarity.DataStructs") as mock_ds, \
-             patch("chemfuse.analyze.similarity.AllChem") as mock_allchem:
+             patch("chemfuse.analyze.similarity._MORGAN_GEN") as mock_morgan_gen:
 
             mol = MagicMock()
             mock_chem.MolFromSmiles.return_value = mol
             fp = _make_fp_mock()
-            mock_allchem.GetMorganFingerprintAsBitVect.return_value = fp
+            mock_morgan_gen.GetFingerprint.return_value = fp
             mock_ds.TanimotoSimilarity.return_value = 1.0
 
             from chemfuse.analyze import similarity
@@ -53,12 +53,12 @@ class TestTanimotoSimilarity:
         with _patch_rdkit(True), \
              patch("chemfuse.analyze.similarity.Chem") as mock_chem, \
              patch("chemfuse.analyze.similarity.DataStructs") as mock_ds, \
-             patch("chemfuse.analyze.similarity.AllChem") as mock_allchem:
+             patch("chemfuse.analyze.similarity._MORGAN_GEN") as mock_morgan_gen:
 
             mol = MagicMock()
             mock_chem.MolFromSmiles.return_value = mol
             fp = _make_fp_mock()
-            mock_allchem.GetMorganFingerprintAsBitVect.return_value = fp
+            mock_morgan_gen.GetFingerprint.return_value = fp
             mock_ds.TanimotoSimilarity.return_value = 0.35
 
             from chemfuse.analyze import similarity
@@ -93,12 +93,12 @@ class TestBulkTanimoto:
         with _patch_rdkit(True), \
              patch("chemfuse.analyze.similarity.Chem") as mock_chem, \
              patch("chemfuse.analyze.similarity.DataStructs") as mock_ds, \
-             patch("chemfuse.analyze.similarity.AllChem") as mock_allchem:
+             patch("chemfuse.analyze.similarity._MORGAN_GEN") as mock_morgan_gen:
 
             mol = MagicMock()
             mock_chem.MolFromSmiles.return_value = mol
             fp = _make_fp_mock()
-            mock_allchem.GetMorganFingerprintAsBitVect.return_value = fp
+            mock_morgan_gen.GetFingerprint.return_value = fp
             mock_ds.TanimotoSimilarity.side_effect = sims
 
             from chemfuse.analyze import similarity
@@ -112,11 +112,11 @@ class TestBulkTanimoto:
         """bulk_tanimoto with empty targets returns empty list."""
         with _patch_rdkit(True), \
              patch("chemfuse.analyze.similarity.Chem") as mock_chem, \
-             patch("chemfuse.analyze.similarity.AllChem") as mock_allchem:
+             patch("chemfuse.analyze.similarity._MORGAN_GEN") as mock_morgan_gen:
 
             mol = MagicMock()
             mock_chem.MolFromSmiles.return_value = mol
-            mock_allchem.GetMorganFingerprintAsBitVect.return_value = _make_fp_mock()
+            mock_morgan_gen.GetFingerprint.return_value = _make_fp_mock()
 
             from chemfuse.analyze import similarity
             results = similarity.bulk_tanimoto(SMILES_A, [])
@@ -138,11 +138,11 @@ class TestTanimotoMatrix:
         with _patch_rdkit(True), \
              patch("chemfuse.analyze.similarity.Chem") as mock_chem, \
              patch("chemfuse.analyze.similarity.DataStructs") as mock_ds, \
-             patch("chemfuse.analyze.similarity.AllChem") as mock_allchem:
+             patch("chemfuse.analyze.similarity._MORGAN_GEN") as mock_morgan_gen:
 
             mol = MagicMock()
             mock_chem.MolFromSmiles.return_value = mol
-            mock_allchem.GetMorganFingerprintAsBitVect.return_value = _make_fp_mock()
+            mock_morgan_gen.GetFingerprint.return_value = _make_fp_mock()
             mock_ds.TanimotoSimilarity.return_value = 0.4
 
             from chemfuse.analyze import similarity
@@ -158,11 +158,11 @@ class TestTanimotoMatrix:
         with _patch_rdkit(True), \
              patch("chemfuse.analyze.similarity.Chem") as mock_chem, \
              patch("chemfuse.analyze.similarity.DataStructs") as mock_ds, \
-             patch("chemfuse.analyze.similarity.AllChem") as mock_allchem:
+             patch("chemfuse.analyze.similarity._MORGAN_GEN") as mock_morgan_gen:
 
             mol = MagicMock()
             mock_chem.MolFromSmiles.return_value = mol
-            mock_allchem.GetMorganFingerprintAsBitVect.return_value = _make_fp_mock()
+            mock_morgan_gen.GetFingerprint.return_value = _make_fp_mock()
             mock_ds.TanimotoSimilarity.return_value = 0.35
 
             from chemfuse.analyze import similarity
@@ -178,11 +178,11 @@ class TestTanimotoMatrix:
         with _patch_rdkit(True), \
              patch("chemfuse.analyze.similarity.Chem") as mock_chem, \
              patch("chemfuse.analyze.similarity.DataStructs") as mock_ds, \
-             patch("chemfuse.analyze.similarity.AllChem") as mock_allchem:
+             patch("chemfuse.analyze.similarity._MORGAN_GEN") as mock_morgan_gen:
 
             mol = MagicMock()
             mock_chem.MolFromSmiles.return_value = mol
-            mock_allchem.GetMorganFingerprintAsBitVect.return_value = _make_fp_mock()
+            mock_morgan_gen.GetFingerprint.return_value = _make_fp_mock()
             mock_ds.TanimotoSimilarity.return_value = 0.4
 
             from chemfuse.analyze import similarity
@@ -199,11 +199,11 @@ class TestFindNearestNeighbors:
         with _patch_rdkit(True), \
              patch("chemfuse.analyze.similarity.Chem") as mock_chem, \
              patch("chemfuse.analyze.similarity.DataStructs") as mock_ds, \
-             patch("chemfuse.analyze.similarity.AllChem") as mock_allchem:
+             patch("chemfuse.analyze.similarity._MORGAN_GEN") as mock_morgan_gen:
 
             mol = MagicMock()
             mock_chem.MolFromSmiles.return_value = mol
-            mock_allchem.GetMorganFingerprintAsBitVect.return_value = _make_fp_mock()
+            mock_morgan_gen.GetFingerprint.return_value = _make_fp_mock()
             mock_ds.TanimotoSimilarity.return_value = 0.5
 
             from chemfuse.analyze import similarity

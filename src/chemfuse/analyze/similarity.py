@@ -19,9 +19,10 @@ AllChem = None
 MACCSkeys = None
 try:
     from rdkit import Chem, DataStructs  # type: ignore[import-not-found]
-    from rdkit.Chem import AllChem, MACCSkeys  # type: ignore[import-not-found]
+    from rdkit.Chem import MACCSkeys, rdFingerprintGenerator  # type: ignore[import-not-found]
 
     _RDKIT_AVAILABLE = True
+    _MORGAN_GEN = rdFingerprintGenerator.GetMorganGenerator(radius=2, fpSize=2048)
 except ImportError:
     _RDKIT_AVAILABLE = False
 
@@ -41,7 +42,7 @@ def _get_fingerprint(smiles: str, fp_type: str = "morgan") -> object:
     if fp_type == "rdkit":
         return Chem.RDKFingerprint(mol)
     # Default: Morgan (radius=2, 2048 bits)
-    return AllChem.GetMorganFingerprintAsBitVect(mol, radius=2, nBits=2048)
+    return _MORGAN_GEN.GetFingerprint(mol)
 
 
 def tanimoto_similarity(

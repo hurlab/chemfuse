@@ -41,7 +41,7 @@ def render() -> None:
         if uploaded is not None:
             _upload_name = uploaded.name
             try:
-                df = pd.read_csv(uploaded)
+                df = pd.read_csv(uploaded, nrows=10_000)
                 st.success(f"Loaded {len(df)} rows.")
             except Exception as exc:
                 st.error(f"Failed to read CSV: {exc}")

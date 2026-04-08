@@ -99,7 +99,7 @@ def _load_npscorer() -> object | None:
 
         _npscorer = npscorer
         _np_model = npscorer.readNPModel()
-    except (ImportError, Exception) as exc:
+    except (ImportError, OSError) as exc:
         logger.debug("RDKit NP_Score contrib not available: %s", exc)
         _npscorer = None
 

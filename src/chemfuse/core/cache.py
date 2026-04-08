@@ -60,7 +60,7 @@ class Cache:
         Handles migration for existing databases that pre-date the
         last_accessed column by adding it when absent.
         """
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.cache_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
         self._conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("""

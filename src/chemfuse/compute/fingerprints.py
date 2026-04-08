@@ -16,12 +16,17 @@ logger = logging.getLogger(__name__)
 try:
     from rdkit import Chem, DataStructs  # type: ignore[import-not-found]
     from rdkit.Chem import (  # type: ignore[import-not-found]
-        AllChem,
         MACCSkeys,
+        rdFingerprintGenerator,
         rdMolDescriptors,  # type: ignore[import-not-found]
     )
 
     RDKIT_AVAILABLE = True
+
+    # Pre-built generators (module-level singletons, thread-safe in RDKit)
+    def _morgan_gen(radius: int = 2, n_bits: int = 2048) -> Any:
+        return rdFingerprintGenerator.GetMorganGenerator(radius=radius, fpSize=n_bits)
+
 except ImportError:
     RDKIT_AVAILABLE = False
 
@@ -89,7 +94,7 @@ def fp_matrix(smiles_list: list[str], fp_type: str = "morgan", n_bits: int = 204
                 fp = Chem.RDKFingerprint(mol)
                 arr = np.zeros(n_bits, dtype=np.uint8)
             else:
-                fp = AllChem.GetMorganFingerprintAsBitVect(mol, radius=2, nBits=n_bits)
+                fp = _morgan_gen(radius=2, n_bits=n_bits).GetFingerprint(mol)
                 arr = np.zeros(n_bits, dtype=np.uint8)
             DataStructs.ConvertToNumpyArray(fp, arr)
             rows.append(arr)
@@ -142,7 +147,7 @@ def compute_fingerprint(
         return None
 
     if fp_type_lower == _FP_MORGAN:
-        fp = AllChem.GetMorganFingerprintAsBitVect(mol, radius, nBits=n_bits)
+        fp = _morgan_gen(radius=radius, n_bits=n_bits).GetFingerprint(mol)
     elif fp_type_lower == _FP_MACCS:
         fp = MACCSkeys.GenMACCSKeys(mol)
         n_bits = fp.GetNumBits()
@@ -203,8 +208,8 @@ def tanimoto_similarity(
     fp_type_lower = fp_type.lower()
 
     if fp_type_lower == _FP_MORGAN:
-        fp_a = AllChem.GetMorganFingerprintAsBitVect(mol_a, radius, nBits=n_bits)
-        fp_b = AllChem.GetMorganFingerprintAsBitVect(mol_b, radius, nBits=n_bits)
+        fp_a = _morgan_gen(radius=radius, n_bits=n_bits).GetFingerprint(mol_a)
+        fp_b = _morgan_gen(radius=radius, n_bits=n_bits).GetFingerprint(mol_b)
     elif fp_type_lower == _FP_MACCS:
         fp_a = MACCSkeys.GenMACCSKeys(mol_a)
         fp_b = MACCSkeys.GenMACCSKeys(mol_b)
@@ -227,8 +232,8 @@ def tanimoto_similarity(
         )
     else:
         # Fallback to Morgan for unrecognised type
-        fp_a = AllChem.GetMorganFingerprintAsBitVect(mol_a, radius, nBits=n_bits)
-        fp_b = AllChem.GetMorganFingerprintAsBitVect(mol_b, radius, nBits=n_bits)
+        fp_a = _morgan_gen(radius=radius, n_bits=n_bits).GetFingerprint(mol_a)
+        fp_b = _morgan_gen(radius=radius, n_bits=n_bits).GetFingerprint(mol_b)
 
     similarity: float = DataStructs.TanimotoSimilarity(fp_a, fp_b)
     return similarity
@@ -282,7 +287,7 @@ def bulk_tanimoto(
             query_mol, nBits=n_bits
         )
     else:
-        query_fp = AllChem.GetMorganFingerprintAsBitVect(query_mol, radius, nBits=n_bits)
+        query_fp = _morgan_gen(radius=radius, n_bits=n_bits).GetFingerprint(query_mol)
 
     results: list[tuple[str, float]] = []
     for target_smi in target_smiles_list:
@@ -303,7 +308,7 @@ def bulk_tanimoto(
                 target_mol, nBits=n_bits
             )
         else:
-            target_fp = AllChem.GetMorganFingerprintAsBitVect(target_mol, radius, nBits=n_bits)
+            target_fp = _morgan_gen(radius=radius, n_bits=n_bits).GetFingerprint(target_mol)
 
         sim: float = DataStructs.TanimotoSimilarity(query_fp, target_fp)
         results.append((target_smi, sim))

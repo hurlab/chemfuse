@@ -16,15 +16,15 @@ logger = logging.getLogger(__name__)
 
 Chem = None
 DataStructs = None
-AllChem = None
 MACCSkeys = None
 Butina = None
 try:
     from rdkit import Chem, DataStructs  # type: ignore[import-not-found]
-    from rdkit.Chem import AllChem, MACCSkeys  # type: ignore[import-not-found]
+    from rdkit.Chem import MACCSkeys, rdFingerprintGenerator  # type: ignore[import-not-found]
     from rdkit.ML.Cluster import Butina  # type: ignore[import-not-found]
 
     _RDKIT_AVAILABLE = True
+    _MORGAN_GEN = rdFingerprintGenerator.GetMorganGenerator(radius=2, fpSize=2048)
 except ImportError:
     _RDKIT_AVAILABLE = False
 
@@ -58,7 +58,7 @@ def _get_fp(smiles: str, fp_type: str = "morgan") -> object:
         return MACCSkeys.GenMACCSKeys(mol)
     if fp_type == "rdkit":
         return Chem.RDKFingerprint(mol)
-    return AllChem.GetMorganFingerprintAsBitVect(mol, radius=2, nBits=2048)
+    return _MORGAN_GEN.GetFingerprint(mol)
 
 
 def _fp_matrix(smiles_list: list[str], fp_type: str = "morgan", n_bits: int = 2048) -> np.ndarray:
