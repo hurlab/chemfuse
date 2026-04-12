@@ -5,12 +5,12 @@ Horizontal (left-to-right) flowchart.
 """
 
 import matplotlib
+
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
-import matplotlib.patheffects as pe
+import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
 
 # ---------------------------------------------------------------------------
 # Canvas / figure setup
@@ -117,7 +117,6 @@ def arrow(ax, x1, y1, x2, y2, color=C_ARROW, lw=0.9, zorder=2,
 def bent_arrow(ax, points, color=C_ARROW, lw=0.9, zorder=2, arrowstyle="-|>"):
     """Draw a multi-segment arrow through a list of (x,y) waypoints."""
     from matplotlib.path import Path
-    import matplotlib.patches as mpatches
     codes = [Path.MOVETO] + [Path.LINETO] * (len(points) - 1)
     path = Path(points, codes)
     patch = mpatches.FancyArrowPatch(

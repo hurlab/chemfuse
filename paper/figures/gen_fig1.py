@@ -4,11 +4,10 @@ Outputs: fig1_architecture.svg and fig1_architecture.pdf
 """
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
-from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
-import matplotlib.patheffects as pe
+from matplotlib.patches import FancyBboxPatch
 
 # ---------------------------------------------------------------------------
 # Figure dimensions (180 mm x 140 mm at 300 dpi for journal)

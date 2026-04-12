@@ -208,6 +208,7 @@ dist-ssr/
 # User Custom Patterns (preserved by moai update)
 .claude/
 .moai/
+.agency/
 CLAUDE.md
 .mcp.json
 PROJECT_HANDOFF.md

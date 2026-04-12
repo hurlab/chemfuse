@@ -6,10 +6,11 @@ Dual-panel figure:
 """
 
 import matplotlib
+
 matplotlib.use("Agg")  # Non-interactive backend for headless generation
 
-import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+import matplotlib.pyplot as plt
 import numpy as np
 
 # ---------------------------------------------------------------------------
@@ -27,7 +28,7 @@ speedup_factors = ["4.4x", "5.3x", "6.2x"]
 # Panel B
 cold_cache = np.array([0.75, 3.0, 5.7])
 warm_cache = np.array([0.12, 0.5, 0.75])
-cache_speedup = [f"{c/w:.1f}x" for c, w in zip(cold_cache, warm_cache)]
+cache_speedup = [f"{c/w:.1f}x" for c, w in zip(cold_cache, warm_cache, strict=True)]
 
 # ---------------------------------------------------------------------------
 # Style constants
@@ -97,7 +98,7 @@ ax_a.plot(
 )
 
 # Speedup annotations at midpoint of gap
-for xi, ct, mt, sf in zip(x, chemfuse_times, manual_times, speedup_factors):
+for xi, ct, mt, sf in zip(x, chemfuse_times, manual_times, speedup_factors, strict=True):
     mid_y = (ct + mt) / 2.0
     ax_a.annotate(
         sf,
@@ -162,7 +163,7 @@ bars_warm = ax_b.bar(
 )
 
 # Speedup annotations above warm cache bars
-for pos, wt, sf in zip(bar_positions_warm, warm_cache, cache_speedup):
+for pos, wt, sf in zip(bar_positions_warm, warm_cache, cache_speedup, strict=True):
     ax_b.text(
         pos, wt + 0.25,
         sf,

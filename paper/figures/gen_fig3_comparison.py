@@ -5,11 +5,11 @@ Publication-quality heatmap, saved as both SVG and PDF.
 Run with: .venv/bin/python paper/figures/gen_fig3_comparison.py
 """
 
-import numpy as np
 import matplotlib
-import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-from matplotlib.colors import ListedColormap, BoundaryNorm
+import matplotlib.pyplot as plt
+import numpy as np
+from matplotlib.colors import BoundaryNorm, ListedColormap
 
 matplotlib.use("Agg")  # headless / no display needed
 
